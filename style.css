@@ -7,7 +7,13 @@ body.sleeping #stage,body.yawning #stage{filter:brightness(.72) saturate(1.1) se
 #fx{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 #fx span{position:absolute;font-weight:900;animation:fx 1.6s ease-out forwards;will-change:transform,opacity}
 @keyframes fx{0%{transform:translate(0,0) scale(.2) rotate(0);opacity:0}20%{opacity:1;transform:translate(var(--dx),-4vmin) scale(1.1) rotate(10deg)}100%{transform:translate(calc(var(--dx)*2),-22vmin) scale(.8) rotate(-15deg);opacity:0}}
-#bubble{position:fixed;top:6vh;left:50%;transform:translateX(-50%) scale(0);background:#fff;color:#101828;font-size:clamp(32px,10vmin,140px);font-weight:900;line-height:1.2;padding:2.5vmin 6vmin;border-radius:6vmin;max-width:90vw;text-align:center;box-shadow:0 1vmin 4vmin rgba(90,60,0,.35);transition:transform .3s cubic-bezier(.3,1.6,.5,1)}
+#bubble{--fs:clamp(30px,8.5vmin,120px);position:fixed;top:4.5vh;left:50%;transform:translateX(-50%) scale(0);transform-origin:50% 120%;background:#fff;color:#2a1a08;
+  font-family:ui-rounded,"SF Pro Rounded","Hiragino Maru Gothic ProN","NanumSquareRound","Nanum Gothic","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR","Malgun Gothic","PingFang SC","PingFang TC","Microsoft YaHei","Yu Gothic UI",system-ui,sans-serif;
+  font-size:var(--fs);font-weight:800;line-height:1.3;letter-spacing:-.01em;padding:.42em .9em .46em;border-radius:.9em;width:max-content;max-width:min(78vw,22em);box-sizing:border-box;text-align:center;
+  box-shadow:0 .9vmin 3.5vmin rgba(90,60,0,.3);transition:transform .3s cubic-bezier(.3,1.6,.5,1)}
+#bubble::after{content:"";position:absolute;left:50%;bottom:-.34em;width:.7em;height:.7em;background:#fff;border-radius:0 0 .18em 0;transform:translateX(-50%) rotate(45deg)}
+#btext{display:block;word-break:keep-all;overflow-wrap:anywhere;line-break:strict;text-wrap:balance;max-height:2.65em;overflow:hidden}
+#btext .emo{display:inline-block;margin-left:.22em;font-size:.95em;line-height:1;vertical-align:-.06em;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
 body.greeting #bubble,body.wave #bubble,body.talk #bubble{transform:translateX(-50%) scale(1)}
 #zzz{position:fixed;top:15vh;right:18vw;color:#7a5a00;font-size:8vh;font-weight:bold;opacity:0}
 body.sleeping #zzz{opacity:1}
@@ -31,10 +37,9 @@ html,body{height:100dvh;touch-action:manipulation;-webkit-user-select:none;user-
   #video{width:30vw;bottom:auto;top:calc(env(safe-area-inset-top) + 10px)}
 }
 @media (orientation:portrait){
-  #bubble{font-size:13vw;top:calc(env(safe-area-inset-top) + 8vh)}
+  #bubble{--fs:min(10vw,7vh);max-width:88vw;top:calc(env(safe-area-inset-top) + 6vh)}
   #zzz{top:22vh;right:10vw;font-size:10vw}
 }
-#bubble.long{font-size:clamp(22px,6.5vmin,90px);max-width:84vw}
-#heard{display:block;font-size:max(13px,.3em);font-weight:500;color:#7a5a00;margin-top:.6vmin}
+#heard{display:block;max-width:100%;margin:.35em auto 0;padding-top:.3em;border-top:1px solid rgba(122,90,0,.15);font-size:max(13px,.32em);font-weight:500;line-height:1.3;color:#9a7a3a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #heard:empty{display:none}
-@media (orientation:portrait){#bubble.long{font-size:7.5vw}}
+

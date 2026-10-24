@@ -19,8 +19,17 @@ function setState(s){ if(state===s)return; state=s; stT=Date.now(); body.classLi
 function emote(s,next=''){ if(['sleeping','yawning','waking','surprised','greeting'].includes(state))return; queued=next; setState(s); }
 function showBubble(msg){ say(msg,'greet'); if(!askAt||Date.now()>askAt-12000) askAt=Date.now()+7000; }
 let curLang='ko', lastTalk=0, askAt=0, talkTimer=0;
-function say(text,expr,heard=''){ const b=$('#btext'); b.textContent=text; $('#heard').textContent=heard?`🗣 ${heard}`:'';
-  $('#bubble').classList.toggle('long',text.length>14); lastTalk=Date.now(); sleepAt=lastTalk+SLEEP_MS; askAt=lastTalk+20000;
+// 말풍선 정리: 이모지는 하나만 뒤에 분리, 중복 문장부호 정리, 2줄에 맞게 글자 크기 자동 축소
+const EMO_RE=/(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:\uFE0F|\p{Emoji_Modifier}|\u200D\p{Extended_Pictographic})*/gu;
+const esc=t=>t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function tidy(t){ t=String(t||''); const em=t.match(EMO_RE)||[]; let tx=t.replace(EMO_RE,' ').replace(/\uFE0F/g,'')
+  .replace(/([!?！？])\1+/g,'$1').replace(/[~～]{2,}/g,'~').replace(/\.{3,}|…+/g,'…').replace(/\s+([!?,.！？，。、~])/g,'$1').replace(/\s{2,}/g,' ').trim();
+  return {tx,em:em[0]||''}; }
+function setBubble(text,heard=''){ const {tx,em}=tidy(text), b=$('#btext'), bub=$('#bubble');
+  b.innerHTML=`<span class="tx">${esc(tx)}</span>${em?`<span class="emo">${em}</span>`:''}`; $('#heard').textContent=heard?`🗣 ${heard}`:'';
+  b.style.wordBreak=/[\uAC00-\uD7A3]/.test(tx)?'keep-all':'normal'; bub.style.fontSize=''; const base=parseFloat(getComputedStyle(bub).fontSize); let fs=base;
+  for(let i=0;i<10&&b.scrollHeight>fs*1.3*2+2;i++){ fs*=.9; bub.style.fontSize=fs+'px'; } }
+function say(text,expr,heard=''){ setBubble(text,heard); lastTalk=Date.now(); sleepAt=lastTalk+SLEEP_MS; askAt=lastTalk+20000;
   body.classList.add('talk'); clearTimeout(talkTimer); talkTimer=setTimeout(()=>body.classList.remove('talk'),Math.max(4000,text.length*180+2500));
   if(expr==='greet'){ state=''; setState('greeting'); } else if(EMO[expr]){ queued=''; state=''; setState(expr); } else { state=''; setState(faceVisible?'happy':'idle'); } }
 const GROK=new URLSearchParams(location.search).get('grok')||GROK_ENDPOINT;
@@ -88,7 +97,7 @@ function onGesture(g){ const now=Date.now(); gestLast=g+' '+new Date().toLocaleT
   if(g==='v') spawnFx('✌'); if(g==='armsup'||g==='clap') for(let i=0;i<6;i++) setTimeout(()=>spawnFx(),i*100);
   if(g==='stop') blinks=[now,now+260]; if(g==='thumbsup') queued='happy'; }
 function onWave(){ const now=Date.now(); if(now<waveMsgT)return; waveMsgT=now+5000; sleepAt=now+SLEEP_MS;
-  if(state==='sleeping'||state==='yawning')return; $('#btext').textContent='👋 안녕~!'; $('#heard').textContent=''; body.classList.add('wave'); setTimeout(()=>body.classList.remove('wave'),2500); state=''; setState('excited'); }
+  if(state==='sleeping'||state==='yawning')return; setBubble('안녕하세요~! 👋'); body.classList.add('wave'); setTimeout(()=>body.classList.remove('wave'),2500); state=''; setState('excited'); }
 const E=(id)=>{const g=$(id),q=c=>g.querySelector(c);return{g,open:q('.open'),iris:q('.iris'),pupil:q('.pupil'),happy:q('.happy'),closed:q('.closed'),heart:q('.heart'),star:q('.star'),spiral:q('.spiral')};};
 const eyes=[[E('#eyeL'),260],[E('#eyeR'),540]];
 const ease=t=>t<0?0:t>1?1:t*t*(3-2*t);
@@ -100,7 +109,7 @@ const MOUTH={sad:'M360 395 Q400 360 440 395',angry:'M355 390 L378 375 L400 390 L
   dizzy:'M350 375 Q365 360 380 375 Q395 390 410 375 Q425 360 440 375 Q455 390 465 378',startled:'M380 365 Q400 350 420 365 Q420 395 400 395 Q380 395 380 365Z'};
 let lastT=performance.now();
 function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn-lastT)/1000); lastT=pn; const t=pn/1000, st=(now-stT)/1000; if(dt>0) VI.fps=VI.fps*.95+(1/Math.max(dt,.001))*.05;
-  if(DEMO){ if(state!==DEMO){ if(DEMO==='greeting')$('#btext').textContent='안녕하세요!'; setState(DEMO);} }
+  if(DEMO){ if(state!==DEMO){ if(DEMO==='greeting')setBubble('안녕하세요!'); setState(DEMO);} }
   else {
   if(faceVisible && now-lastSeen>LOST_MS){ faceVisible=false; faces=[]; tracks=[]; curId=0; sleepAt=now+SLEEP_MS; target={x:0,y:0}; }
   if(state==='surprised'&&st>0.7) showBubble(pendingMsg);

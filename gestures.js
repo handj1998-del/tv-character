@@ -44,14 +44,14 @@ export function createDetector(){ let vote=[],cur='',since=0,fired='',palmX=[],g
     this.live=ps||shapes.filter(Boolean).join('+'); return out; }, live:'' }; }
 // 반응: 표정 + 말풍선(언어별)
 export const REACT={
-  wave:['greet',{ko:'👋 안녕~! 반가워요!',en:'👋 Hi there!',zh:'👋 你好呀！',yue:'👋 哈囉！',ja:'👋 やっほー！'}],
-  fingerheart:['hearteyes',{ko:'💖 하트 받았어요!',en:'💖 Aww, a heart!',zh:'💖 收到爱心啦！',yue:'💖 收到心心！',ja:'💖 ハートありがとう！'}],
-  bigheart:['hearteyes',{ko:'💖💖 저도 사랑해요!!',en:'💖💖 I love you too!!',zh:'💖💖 我也爱你！！',yue:'💖💖 我都愛你！！',ja:'💖💖 わたしも大好き！！'}],
-  thumbsup:['wink',{ko:'👍 최고예요!',en:'👍 You rock!',zh:'👍 你最棒！',yue:'👍 你好叻！',ja:'👍 さいこう！'}],
-  v:['excited',{ko:'✌️ 브이~!',en:'✌️ Peace!',zh:'✌️ 耶~！',yue:'✌️ 耶~！',ja:'✌️ ピース！'}],
-  clap:['laugh',{ko:'👏 짝짝짝! 신나요!',en:'👏 Yay, clap clap!',zh:'👏 啪啪啪！好开心！',yue:'👏 拍手！好開心！',ja:'👏 パチパチ！'}],
-  point:['curious',{ko:'👉 저요? 저 불렀어요?',en:'👉 Me? You mean me?',zh:'👉 我吗？',yue:'👉 我呀？',ja:'👉 わたし？'}],
-  ok:['happy',{ko:'👌 오케이~!',en:'👌 Okay!',zh:'👌 好的！',yue:'👌 OK！',ja:'👌 オッケー！'}],
-  stop:['startled',{ko:'✋ 앗, 멈출게요!',en:'✋ Okay, stopping!',zh:'✋ 好，我停下！',yue:'✋ 好，停低！',ja:'✋ はい、ストップ！'}],
-  armsup:['excited',{ko:'🙌 만세~!',en:'🙌 Hooray!',zh:'🙌 万岁！',yue:'🙌 萬歲！',ja:'🙌 ばんざーい！'}],
-  peekaboo:['surprised',{ko:'🙈 까꿍! 깜짝이야!',en:'🙈 Peekaboo!',zh:'🙈 躲猫猫！',yue:'🙈 喳！',ja:'🙈 いないいないばあ！'}]};
+  wave:['greet',{ko:'안녕하세요~! 반가워요 👋',en:'Hi there! 👋',zh:'你好呀！ 👋',yue:'哈囉！ 👋',ja:'やっほー！ 👋'}],
+  fingerheart:['hearteyes',{ko:'하트 받았어요! 고마워요 💖',en:'Aww, a heart! 💖',zh:'收到爱心啦！ 💖',yue:'收到心心！ 💖',ja:'ハートありがとう！ 💖'}],
+  bigheart:['hearteyes',{ko:'저도 정말 사랑해요! 💖',en:'I love you too! 💖',zh:'我也爱你！💖',yue:'我都愛你！💖',ja:'わたしも大好き！💖'}],
+  thumbsup:['wink',{ko:'최고예요! 👍',en:'You rock! 👍',zh:'你最棒！ 👍',yue:'你好叻！ 👍',ja:'さいこう！ 👍'}],
+  v:['excited',{ko:'브이~! ✌️',en:'Peace! ✌️',zh:'耶~！ ✌️',yue:'耶~！ ✌️',ja:'ピース！ ✌️'}],
+  clap:['laugh',{ko:'짝짝짝! 신나요! 👏',en:'Yay, clap clap! 👏',zh:'啪啪啪！好开心！ 👏',yue:'拍手！好開心！ 👏',ja:'パチパチ！ 👏'}],
+  point:['curious',{ko:'저요? 저 불렀어요? 👉',en:'Me? You mean me? 👉',zh:'我吗？ 👉',yue:'我呀？ 👉',ja:'わたし？ 👉'}],
+  ok:['happy',{ko:'오케이~! 👌',en:'Okay! 👌',zh:'好的！ 👌',yue:'OK！ 👌',ja:'オッケー！ 👌'}],
+  stop:['startled',{ko:'앗, 멈출게요! ✋',en:'Okay, stopping! ✋',zh:'好，我停下！ ✋',yue:'好，停低！ ✋',ja:'はい、ストップ！ ✋'}],
+  armsup:['excited',{ko:'만세~! 🙌',en:'Hooray! 🙌',zh:'万岁！ 🙌',yue:'萬歲！ 🙌',ja:'ばんざーい！ 🙌'}],
+  peekaboo:['surprised',{ko:'까꿍! 깜짝 놀랐어요! 🙈',en:'Peekaboo! 🙈',zh:'躲猫猫！ 🙈',yue:'喳！ 🙈',ja:'いないいないばあ！ 🙈'}]};
