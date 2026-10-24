@@ -5,11 +5,12 @@ export function handShape(l,builtin=''){ if(!l||l.length<21) return '';
   const s=D(l[0],l[9])||1e-3, i=ext(l,8,6), m=ext(l,12,10), r=ext(l,16,14), p=ext(l,20,18), t4=D(l[4],l[8])/s;
   const thumbOut=D(l[4],l[5])>s*.55;
   if(t4<.32&&m&&r&&p) return 'ok';
-  if(t4<.38&&!m&&!r&&!p) return 'fingerheart';
+  if(t4<.5&&!m&&!r&&!p&&D(l[8],l[0])<D(l[5],l[0])*1.9) return 'fingerheart';   // 관대하게: 엄지·검지 끝이 가깝고 나머지 접힘
   if(builtin==='Thumb_Up'||(thumbOut&&!i&&!m&&!r&&!p&&l[4].y<l[5].y-s*.3)) return 'thumbsup';
   if(builtin==='Victory'||(i&&m&&!r&&!p)) return 'v';
   if(i&&m&&r&&p) return 'palm';
-  if(builtin==='Pointing_Up'||(i&&!m&&!r&&!p)) return 'point';
+  const i2=D(l[0],l[8])>D(l[0],l[6])*1.05||D(l[8],l[12])>s*.55;   // 카메라 쪽을 가리켜 짧아 보여도 허용
+  if(builtin==='Pointing_Up'||(i2&&!m&&!r&&!p&&t4>.45)) return 'point';
   return ''; }
 // 포즈(33점): 0코 11/12어깨 13/14팔꿈치 15/16손목
 export function poseShape(p){ if(!p||p.length<17) return '';
@@ -20,7 +21,7 @@ export function poseShape(p){ if(!p||p.length<17) return '';
   return ''; }
 export const HOLD={fingerheart:500,ok:500,thumbsup:500,v:500,point:600,stop:1200,bigheart:500,armsup:500,cover:600};
 export const COOL={wave:5000,fingerheart:5000,ok:5000,thumbsup:5000,v:5000,point:6000,stop:6000,bigheart:6000,armsup:6000,clap:5000,peekaboo:6000};
-export function createDetector(){ let cur='',since=0,fired='',palmX=[],gap=[],coverSince=0; const last={}; let any=0;
+export function createDetector(){ let vote=[],cur='',since=0,fired='',palmX=[],gap=[],coverSince=0; const last={}; let any=0;
   function fire(g,now){ if(now<(last[g]||0)||now<any) return ''; last[g]=now+COOL[g]; any=now+1500; return g; }
   return { step(now,{hands=[],builtins=[],pose=null}={}){
     const shapes=hands.map((l,k)=>handShape(l,builtins[k]||'')); const ps=poseShape(pose); let out='';
@@ -33,7 +34,8 @@ export function createDetector(){ let cur='',since=0,fired='',palmX=[],gap=[],co
     palmX=palmX.filter(x=>now-x[0]<1300); const xs=palmX.map(x=>x[1]), rg=xs.length?Math.max(...xs)-Math.min(...xs):0;
     if(!out&&xs.length>=4&&rg>.07){ palmX=[]; out=fire('wave',now); }
     // 정적 동작: 포즈 우선
-    let g=ps&&ps!=='cover'?ps:(shapes.find(x=>x&&x!=='palm')||'');
+    let g0=ps&&ps!=='cover'?ps:(shapes.find(x=>x&&x!=='palm')||''); vote.push(g0); if(vote.length>5) vote.shift();
+    const cnt={}; for(const v of vote) cnt[v]=(cnt[v]||0)+1; let g=Object.keys(cnt).find(k=>cnt[k]>=3)??(cur&&cnt[cur]>=2?cur:'');
     if(!g&&pi>=0&&xs.length>=3&&rg<.03) g='stop';
     if(g!==cur){ cur=g; since=now; fired=''; }
     if(!out&&cur&&cur!==fired&&now-since>=HOLD[cur]){ fired=cur; out=fire(cur,now); }

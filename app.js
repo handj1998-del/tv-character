@@ -66,20 +66,20 @@ function trackFaces(list,now){ const nt=[];
   faceIdx=tracks.indexOf(cur); trackSrc='face'; target=toGaze(cur.x,cur.y); }
 const mc=document.createElement('canvas'); mc.width=64; mc.height=48; const mx=mc.getContext('2d',{willReadFrequently:true}); let prevF=null;
 function motionStep(){ if(video.readyState<2)return; mx.drawImage(video,0,0,64,48); const d=mx.getImageData(0,0,64,48).data, g=new Float32Array(64*48);
-  for(let i=0;i<g.length;i++) g[i]=d[i*4]*.3+d[i*4+1]*.59+d[i*4+2]*.11;
+  let lsum=0; for(let i=0;i<g.length;i++){ g[i]=d[i*4]*.3+d[i*4+1]*.59+d[i*4+2]*.11; lsum+=g[i]; } lumaAvg=lumaAvg*.8+lsum/g.length*.2;
   if(prevF){ let n=0,sx=0,sy=0; for(let i=0;i<g.length;i++) if(Math.abs(g[i]-prevF[i])>22){ n++; sx+=i%64; sy+=(i/64|0); }
     if(n>12&&n<g.length*.6){ const now=Date.now(); const m={x:(sx/n+.5)/64,y:(sy/n+.5)/48,n};
       motion=motion&&now-motionT<500?{x:motion.x*.5+m.x*.5,y:motion.y*.5+m.y*.5,n}:m; motionT=now;
       if(!faceVisible){ trackSrc='motion'; target=toGaze(motion.x,motion.y); sleepAt=Math.max(sleepAt,now+8000); } } }
   prevF=g; }
 const DBG=Q.get('debug')==='1'; let dbg=null;
-if(DBG){ dbg=document.createElement('canvas'); dbg.width=240; dbg.height=180; dbg.style.cssText='position:fixed;left:8px;top:8px;z-index:99;border:2px solid #000;background:#000;width:240px;height:180px'; document.body.appendChild(dbg); }
-function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=240,H=180; c.save(); c.translate(W,0); c.scale(-1,1); if(video.readyState>=2) c.drawImage(video,0,0,W,H); c.restore();
+if(DBG){ dbg=document.createElement('canvas'); dbg.width=360; dbg.height=240; dbg.style.cssText='position:fixed;left:8px;top:8px;z-index:99;border:2px solid #000;background:#000;width:360px;height:240px'; document.body.appendChild(dbg); }
+function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=360,H=240; c.save(); c.translate(W,0); c.scale(-1,1); if(video.readyState>=2) c.drawImage(video,0,0,W,H); c.restore();
   const X=x=>(1-x)*W; c.lineWidth=2; c.font='12px sans-serif';
   for(const t of tracks){ const on=t.id===curId&&trackSrc==='face'&&faceVisible; c.strokeStyle=on?'#0f0':'#fff'; const w=t.w*W, h=w*(4/3)*(W/H)*.75; c.strokeRect(X(t.x)-w/2,t.y*H-h/2,w,h); c.fillStyle=c.strokeStyle; c.fillText((on?'▶ ':'')+'#'+t.id,X(t.x)-w/2,t.y*H-h/2-3); }
   if(motion&&Date.now()-motionT<600){ c.fillStyle='#f0f'; c.beginPath(); c.arc(X(motion.x),motion.y*H,5,0,7); c.fill(); }
   c.strokeStyle='#ff0'; c.beginPath(); c.arc(W/2+look.x/1.5*W/2,H/2+look.y/1.6*H/2,7,0,7); c.stroke();
-  c.fillStyle='#ff0'; c.fillStyle='#0ff'; c.fillText(`손/몸: ${gestLive||'-'}  최근: ${gestLast||'-'}`,4,14); c.fillStyle='#ff0'; c.fillText(`${trackSrc||'idle'} gaze ${look.x.toFixed(2)},${look.y.toFixed(2)}`,4,H-6); }
+  c.fillStyle='#ff0'; c.strokeStyle='#0af'; for(const t of ftracks) c.strokeRect(X(t.x)-t.w*W/2,t.y*H-t.h*H/2,t.w*W,t.h*H); c.fillStyle='#fff'; c.fillText(`${VI.src||'-'} ${(VI.conf||0).toFixed(2)} | 검출 ${VI.detHz}/s | 화면 ${VI.fps|0}fps | 밝기 ${lumaAvg|0}${VI.boost>1?' 보정x'+VI.boost.toFixed(1):''} | 손 ${VI.hands??0}`,4,28); c.fillStyle='#0ff'; c.fillText(`손/몸: ${gestLive||'-'}  최근: ${gestLast||'-'}`,4,14); c.fillStyle='#ff0'; c.fillText(`${trackSrc||'idle'} gaze ${look.x.toFixed(2)},${look.y.toFixed(2)}`,4,H-6); }
 let gestLive='', gestLast='';
 function onGesture(g){ const now=Date.now(); gestLast=g+' '+new Date().toLocaleTimeString(); sleepAt=now+SLEEP_MS;
   if(state==='sleeping'||state==='yawning'){ setState('waking'); pendingMsg=GS.REACT.wave[1][curLang]; return; }
@@ -99,7 +99,7 @@ const MOUTH={sad:'M360 395 Q400 360 440 395',angry:'M355 390 L378 375 L400 390 L
   sleepy:'M385 378 Q400 386 415 378',curious:'M400 362 a12 16 0 1 0 0.1 0Z',wink:'M350 360 Q400 405 450 360',eyeroll:'M370 380 L430 372',
   dizzy:'M350 375 Q365 360 380 375 Q395 390 410 375 Q425 360 440 375 Q455 390 465 378',startled:'M380 365 Q400 350 420 365 Q420 395 400 395 Q380 395 380 365Z'};
 let lastT=performance.now();
-function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn-lastT)/1000); lastT=pn; const t=pn/1000, st=(now-stT)/1000;
+function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn-lastT)/1000); lastT=pn; const t=pn/1000, st=(now-stT)/1000; if(dt>0) VI.fps=VI.fps*.95+(1/Math.max(dt,.001))*.05;
   if(DEMO){ if(state!==DEMO){ if(DEMO==='greeting')$('#btext').textContent='안녕하세요!'; setState(DEMO);} }
   else {
   if(faceVisible && now-lastSeen>LOST_MS){ faceVisible=false; faces=[]; tracks=[]; curId=0; sleepAt=now+SLEEP_MS; target={x:0,y:0}; }
@@ -190,27 +190,66 @@ setState(DEMO||'idle'); requestAnimationFrame(tick);
 $('#btnFs').onclick=()=>{ const d=document,el=d.documentElement; if(d.fullscreenElement||d.webkitFullscreenElement){(d.exitFullscreen||d.webkitExitFullscreen).call(d);return;} const f=el.requestFullscreen||el.webkitRequestFullscreen; if(f)f.call(el); else status.textContent='iPhone은 공유 → 홈 화면에 추가로 전체화면 사용'; };
 $('#btnCam').onclick=()=>body.classList.toggle('showcam');
 document.addEventListener('keydown',e=>{ if(e.key==='f')$('#btnFs').click(); if(e.key==='c')$('#btnCam').click(); });
+// ── 카메라 인식 파이프라인: 전체 프레임 + 타일/관심영역 확대 얼굴 검출 → IoU 트래킹 → 포즈(사람) 대체 → 손동작
+const MOB=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+let lumaAvg=128, VI={src:'',conf:0,fps:60,detHz:0,boost:1,faces:0}; window.__det={calls:0,face:0,pose:0,none:0}; window.__VI=VI;
+const cv=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
+const bc=cv(1280,720), bx=bc.getContext('2d'), cc=cv(256,256), cx2=cc.getContext('2d'), hc=cv(384,384), hx=hc.getContext('2d');
+const IOU=(a,b)=>{const x1=Math.max(a.x-a.w/2,b.x-b.w/2),x2=Math.min(a.x+a.w/2,b.x+b.w/2),y1=Math.max(a.y-a.h/2,b.y-b.h/2),y2=Math.min(a.y+a.h/2,b.y+b.h/2);const i=Math.max(0,x2-x1)*Math.max(0,y2-y1);return i/(a.w*a.h+b.w*b.h-i||1);};
+let fineI=0, ftracks=[], ftId=1, roi=null, lastPose=null, lastPoseT=0, tileI=0;
+function frameSource(){ const W=video.videoWidth,H=video.videoHeight; if(lumaAvg>=75){ VI.boost=1; return [video,W,H]; }
+  const k=Math.min(3,95/Math.max(lumaAvg,12)); VI.boost=k; if(bc.width!==W){bc.width=W;bc.height=H;}
+  bx.filter=`brightness(${k}) contrast(1.2)`; bx.drawImage(video,0,0,W,H); bx.filter='none'; return [bc,W,H]; }
+function cropTo(ctx,c,srcEl,W,H,x,y,s){ x=Math.max(0,Math.min(W-s,x)); y=Math.max(0,Math.min(H-s,y)); s=Math.min(s,W,H); ctx.drawImage(srcEl,x,y,s,s,0,0,c.width,c.height); return [x,y,s]; }
+function faceDetect(fd,srcEl,W,H){ const out=[]; const add=(r,ox,oy,sc,cw)=>{ for(const d of r.detections){ const b=d.boundingBox,f=sc/cw;
+    out.push({x:(ox+(b.originX+b.width/2)*f)/W,y:(oy+(b.originY+b.height/2)*f)/H,w:b.width*f/W,h:b.height*f/H,conf:d.categories?.[0]?.score||.5}); } };
+  add(fd.detect(srcEl),0,0,W,W);   // 전체(좌표는 원본 px)
+  const crops=[]; const T=Math.round(H/2), cols=[0,(W-T)/3,2*(W-T)/3,W-T], rows=[0,H-T];
+  if(roi){ const s=Math.max(H*.22,Math.min(H,roi.w*W*4)); crops.push([roi.x*W-s/2,roi.y*H-s/2,s]); }
+  for(let k=0;k<(MOB?1:2);k++){ const t=tileI++%8; crops.push([cols[t%4],rows[t>>2],T]); }
+  if(!ftracks.length&&!roi){ const F=Math.round(H/4), nx=Math.ceil((W-F)/(F*.75))+1, ny=Math.ceil((H-F)/(F*.75))+1, t=fineI++%(nx*ny);   // 아무도 없을 때 작은 타일로 먼 얼굴 탐색
+    crops.push([(t%nx)*(W-F)/(nx-1),Math.floor(t/nx)*(H-F)/(ny-1),F]); }
+  for(const [x,y,s] of crops){ const [X,Y,S]=cropTo(cx2,cc,srcEl,W,H,x,y,s); add(fd.detect(cc),X,Y,S,cc.width); }
+  out.sort((a,b)=>b.conf-a.conf); const keep=[]; for(const d of out) if(!keep.some(k=>IOU(k,d)>.3)) keep.push(d); return keep; }
+function updateTracks(dets,now){ for(const d of dets){ let best=null,bi=.15; for(const t of ftracks){ const v=IOU(t,d); if(v>bi){bi=v;best=t;} }
+    if(best){ for(const k of ['x','y','w','h']) best[k]+=(d[k]-best[k])*.55; best.conf=d.conf; best.seen=now; best.hits++; }
+    else ftracks.push({...d,id:ftId++,seen:now,hits:1,born:now}); }
+  ftracks=ftracks.filter(t=>now-t.seen<1000); return ftracks.filter(t=>t.hits>=2||t.conf>.6); }
 window.startCam=async()=>{ try{
-  video.srcObject=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}}});
+  video.srcObject=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:MOB?960:1280},height:{ideal:MOB?540:720},frameRate:{ideal:30}}});
   setInterval(motionStep,66);
   status.textContent='얼굴 인식 모델 불러오는 중…';
   const fs=await FilesetResolver.forVisionTasks("./vendor/mediapipe/wasm");
-  const det=await FaceDetector.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/blaze_face_short_range.tflite",delegate:"GPU"},runningMode:"VIDEO",minDetectionConfidence:0.5});
-  status.textContent='준비 완료!'; let last=-1;
-  setInterval(()=>{ if(video.readyState<2||video.currentTime===last)return; last=video.currentTime;
-    const r=det.detectForVideo(video,performance.now()); const W=video.videoWidth,H=video.videoHeight;
-    if(r.detections.length) onFaces(r.detections.map(d=>d.boundingBox).sort((a,b)=>b.width-a.width).slice(0,4).map(b=>({x:(b.originX+b.width/2)/W,y:(b.originY+b.height/2)/H,w:b.width/W}))); },33);
-  // 동작 인식 (손 2개 + 몸 포즈). 휴대폰은 느리게, 포즈는 ?pose=1일 때만
-  try{ const MOB=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent), usePose=Q.get('pose')==='1'||(!MOB&&Q.get('pose')!=='0');
-    const gr=await GestureRecognizer.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/gesture_recognizer.task",delegate:"GPU"},runningMode:"VIDEO",numHands:2});
-    let pl=null; if(usePose) try{ pl=await PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/pose_landmarker_lite.task",delegate:"GPU"},runningMode:"VIDEO",numPoses:1}); }catch(e){ console.warn('pose off',e); }
-    const det=GS.createDetector(); let pose=null, pi=0;
-    setInterval(()=>{ if(video.readyState<2||state==='sleeping')return; const pn=performance.now();
-      const r=gr.recognizeForVideo(video,pn);
-      if(pl&&(pi++%2===0)){ pose=pl.detectForVideo(video,pn+1).landmarks?.[0]||null; }
-      const g=det.step(Date.now(),{hands:r.landmarks||[],builtins:(r.gestures||[]).map(x=>x?.[0]?.categoryName||''),pose});
-      gestLive=det.live; if(g) onGesture(g); },MOB?250:120);
-  }catch(e){ console.warn('gesture off',e); }
+  const fd=await FaceDetector.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/blaze_face_short_range.tflite",delegate:"GPU"},runningMode:"IMAGE",minDetectionConfidence:.35,minSuppressionThreshold:.3});
+  status.textContent='준비 완료!';
+  let gr=null, pl=null; const det=GS.createDetector(); const poseOK=Q.get('pose')!=='0';
+  (async()=>{ try{ gr=await GestureRecognizer.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/gesture_recognizer.task",delegate:"GPU"},runningMode:"VIDEO",numHands:2,minHandDetectionConfidence:.35,minHandPresenceConfidence:.35,minTrackingConfidence:.35}); }catch(e){ console.warn('gesture off',e); }
+    if(poseOK) try{ pl=await PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/pose_landmarker_lite.task",delegate:"GPU"},runningMode:"VIDEO",numPoses:2,minPoseDetectionConfidence:.35,minPosePresenceConfidence:.35}); }catch(e){ console.warn('pose off',e); VI.poseErr=String(e); } VI.models=(gr?'hand ':'')+(pl?'pose':''); })();
+  let n=0, cost=30, lastVT=-1, ts=0, hzN=0, hzT=performance.now();
+  const loop=()=>{ const t0=performance.now();
+    if(video.readyState>=2&&video.currentTime!==lastVT){ lastVT=video.currentTime; n++; hzN++; const now=Date.now(); ts=Math.max(ts+1,t0);
+      const [src,W,H]=frameSource(); window.__det.calls++;
+      const tr=updateTracks(faceDetect(fd,src,W,H),now);
+      // 포즈: 데스크톱 2회에 1번, 휴대폰은 얼굴 없을 때 4회에 1번
+      if(pl&&(MOB?(!tr.length&&n%4===0):n%2===0)){ const r=pl.detectForVideo(src,ts); lastPose=r.landmarks?.[0]||null; if(lastPose) lastPoseT=now; }
+      const P=now-lastPoseT<600?lastPose:null;
+      if(tr.length){ VI.src='face'; VI.conf=Math.max(...tr.map(t=>t.conf)); window.__det.face++; roi=tr[0];
+        onFaces(tr.sort((a,b)=>b.w-a.w).slice(0,4).map(t=>({x:t.x,y:t.y,w:t.w}))); }
+      else if(P){ const v=i=>(P[i].visibility??1)>.5, sw=Math.hypot(P[11].x-P[12].x,P[11].y-P[12].y);
+        const pt=v(0)?P[0]:(v(11)&&v(12))?{x:(P[11].x+P[12].x)/2,y:(P[11].y+P[12].y)/2-sw*.6}:null;
+        if(pt){ VI.src='pose'; VI.conf=P[0].visibility??0; window.__det.pose++; roi={x:pt.x,y:pt.y,w:Math.max(.02,sw*.45)}; onFaces([{x:pt.x,y:pt.y,w:sw*.45}]); } else { VI.src=''; window.__det.none++; } }
+      else { VI.src=Date.now()-motionT<800?'motion':''; window.__det.none++; roi=VI.src==='motion'?{x:motion.x,y:motion.y,w:.05}:null; }
+      VI.faces=tr.length;
+      // 손동작: 데스크톱 2회에 1번, 휴대폰 3회에 1번. 멀리 있으면 사람 주변을 확대해서 인식
+      if(gr&&state!=='sleeping'&&n%(MOB?3:2)===1){ let img=src, far=roi&&roi.w<.07&&(VI.src==='face'||VI.src==='pose');
+        if(far){ const s=Math.min(H,Math.max(H*.35,roi.w*W*9)); cropTo(hx,hc,src,W,H,roi.x*W-s/2,roi.y*H-s*.35,s); img=hc; }
+        const r=gr.recognizeForVideo(img,ts+.5); VI.hands=(r.landmarks||[]).length+(far?' (확대)':'');
+        const g=det.step(now,{hands:r.landmarks||[],builtins:(r.gestures||[]).map(x=>x?.[0]?.categoryName||''),pose:P}); gestLive=det.live; if(g) onGesture(g); } }
+    const c=performance.now()-t0; cost=cost*.9+c*.1; VI.cost=cost|0;
+    if(performance.now()-hzT>1000){ VI.detHz=hzN; hzN=0; hzT=performance.now(); }
+    // 적응형: 화면 fps가 떨어지면 검출 간격을 늘림
+    const base=MOB?110:50, slow=VI.fps<30?2.2:VI.fps<45?1.5:1; setTimeout(loop,Math.max(base,cost*1.6)*slow); };
+  loop();
  }catch(e){ console.error(e); status.textContent='카메라/모델 오류: '+e.message+' (localhost 또는 https 필요)'; } };
 
 let micLoading=false;
