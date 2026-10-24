@@ -1,29 +1,48 @@
 import { FaceDetector, GestureRecognizer, FilesetResolver } from "./vendor/mediapipe/vision_bundle.mjs";
 import * as SP from "./speech.js";
+import * as DLG from "./dialogue.js";
+import { GROK_ENDPOINT, GROK_TIMEOUT_MS } from "./config.js";
 const $=s=>document.querySelector(s), body=document.body, video=$('#video'), status=$('#status');
 const Q=new URLSearchParams(location.search), DEMO=Q.get('state');
 const HR=Q.get('time')==='night'?23:Q.get('time')==='morning'?8:new Date().getHours();
 const NIGHT=HR>=22||HR<6, MORNING=HR>=6&&HR<10;
 const SLEEP_MS=NIGHT?15000:30000, GREET_MS=4500, LOST_MS=1500;
-const EMO={sad:3,angry:2.5,shy:2.5,sleepy:3,excited:2.5,curious:2.5,wink:1.2,eyeroll:1.6,hearteyes:3,stareyes:2.5,dizzy:2.5,startled:1.5};
+const EMO={sad:3,angry:2.5,shy:2.5,sleepy:3,excited:2.5,curious:2.5,wink:1.2,laugh:2.5,eyeroll:1.6,hearteyes:3,stareyes:2.5,dizzy:2.5,startled:1.5};
 const ALL=['idle','surprised','greeting','happy','yawning','sleeping','waking',...Object.keys(EMO)];
 let state='', stT=0, lastSeen=0, faceVisible=false, faceSince=0, sleepAt=Date.now()+SLEEP_MS, pendingMsg='', queued='';
 let target={x:0,y:0}, look={x:0,y:0}, sac={x:0,y:0}, sacT=0, blinkT=Date.now()+2000, blinks=[], fxT=0;
 let faces=[], faceIdx=0, faceSwT=0, shyCD=0, stareCD=0, randT=Date.now()+9000, waveMsgT=0;
 const LABEL={idle:NIGHT?'밤이라 조금 졸려요…':MORNING?'좋은 아침이에요! ☀':'두리번두리번…',surprised:'앗! 누구지?',greeting:'인사 중!',happy:'함께 있어서 행복해요',yawning:'하아암… 졸려요',sleeping:'쿨쿨 자는 중…',waking:'으쌰~ 기지개!',
-  sad:'시무룩…',angry:'흥!',shy:'부끄러워요…',sleepy:'졸려요…',excited:'신난다!',curious:'음? 뭐지?',wink:'찡긋 😉',eyeroll:'에휴~',hearteyes:'좋아요 ♥',stareyes:'반짝반짝 ✦',dizzy:'어질어질~',startled:'깜짝이야! 💦'};
+  sad:'시무룩…',angry:'흥!',shy:'부끄러워요…',sleepy:'졸려요…',excited:'신난다!',curious:'음? 뭐지?',wink:'찡긋 😉',eyeroll:'에휴~',hearteyes:'좋아요 ♥',stareyes:'반짝반짝 ✦',dizzy:'어질어질~',startled:'깜짝이야! 💦',laugh:'ㅎㅎㅎ 웃는 중'};
 function setState(s){ if(state===s)return; state=s; stT=Date.now(); body.classList.remove(...ALL); body.classList.add(s); status.textContent=LABEL[s]; }
 function emote(s,next=''){ if(['sleeping','yawning','waking','surprised','greeting'].includes(state))return; queued=next; setState(s); }
-function showBubble(msg){ $('#bubble').textContent=msg; setState('greeting'); }
-function greetLang(r){ const L=SP.LANGS[r.lang];
+function showBubble(msg){ say(msg,'greet'); if(!askAt||Date.now()>askAt-12000) askAt=Date.now()+7000; }
+let curLang='ko', lastTalk=0, askAt=0, talkTimer=0;
+function say(text,expr,heard=''){ const b=$('#btext'); b.textContent=text; $('#heard').textContent=heard?`🗣 ${heard}`:'';
+  $('#bubble').classList.toggle('long',text.length>14); lastTalk=Date.now(); sleepAt=lastTalk+SLEEP_MS; askAt=lastTalk+20000;
+  body.classList.add('talk'); clearTimeout(talkTimer); talkTimer=setTimeout(()=>body.classList.remove('talk'),Math.max(4000,text.length*180+2500));
+  if(expr==='greet'){ state=''; setState('greeting'); } else if(EMO[expr]){ queued=''; state=''; setState(expr); } else { state=''; setState(faceVisible?'happy':'idle'); } }
+const GROK=new URLSearchParams(location.search).get('grok')||GROK_ENDPOINT;
+const SID=Math.random().toString(36).slice(2);
+const EXPR=['happy','laugh','shy','curious','sad','excited','wink','hearteyes','stareyes','sleepy','angry','dizzy','startled','eyeroll','greet'];
+async function askGrok(text,lang){ if(!GROK) return null; const ac=new AbortController(), to=setTimeout(()=>ac.abort(),GROK_TIMEOUT_MS);
+  try{ const r=await fetch(GROK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid:SID,lang,text,name:DLG.state.name||''}),signal:ac.signal});
+    if(!r.ok) throw new Error('HTTP '+r.status); const j=await r.json(); if(!j.text) throw new Error('empty');
+    return {text:String(j.text).slice(0,120),expr:EXPR.includes(j.expression)?j.expression:'happy',intent:'grok'}; }
+  catch(e){ console.warn('Grok 실패 → 규칙 기반',e.message); return null; } finally{ clearTimeout(to); } }
+async function greetLang(r){ const L=SP.LANGS[r.lang];
   if(!L){ status.textContent=`감지된 언어: ${r.lang||'?'} (지원 안 함) "${r.text}" [${r.dbg||""}]`; return; }
-  sleepAt=Date.now()+SLEEP_MS; state=''; showBubble(L.text); status.textContent=`감지된 언어: ${L.label} — "${r.text}"  [${r.dbg}]`; }
+  curLang=r.lang; let res=null;
+  if(r.text){ res=await askGrok(r.text,r.lang); if(res) DLG.state.awaiting=''; else res=DLG.respond(r.text,r.lang); }
+  else res={text:L.text,expr:'greet',intent:'greet'};
+  say(res.text,res.expr==='happy'&&!faceVisible?'excited':res.expr,r.text);
+  status.textContent=`${L.label} · 의도: ${res.intent} — "${r.text}"  [${r.dbg}]`; }
 // list: [{x,y,w}] 정규화 좌표, 큰 얼굴 순
 function onFaces(list){ const now=Date.now(); if(!list.length)return;
   if(!faceVisible){ faceVisible=true; faceSince=now;
     if(state==='sleeping'||state==='yawning'){ pendingMsg='앗, 깼어요! 안녕하세요!'; setState('waking'); }
-    else if(list[0].w>.5){ pendingMsg='안녕하세요!'; setState('startled'); queued='greet'; }
-    else { pendingMsg='안녕하세요!'; setState('surprised'); } }
+    else if(list[0].w>.5){ pendingMsg=SP.LANGS[curLang].text; setState('startled'); queued='greet'; }
+    else { pendingMsg=SP.LANGS[curLang].text; setState('surprised'); } }
   lastSeen=now; faces=list;
   if(list.length>1){ if(now>faceSwT){ faceIdx=(faceIdx+1)%list.length; faceSwT=now+2200+Math.random()*1500; } } else faceIdx=0;
   const f=list[Math.min(faceIdx,list.length-1)];
@@ -31,7 +50,7 @@ function onFaces(list){ const now=Date.now(); if(!list.length)return;
   if(list[0].w>.42&&now>shyCD&&(state==='happy'||state==='idle')){ shyCD=now+8000; emote('shy'); }
   if(state==='happy'&&now-faceSince>8000&&now>stareCD){ stareCD=now+20000; emote('wink','hearteyes'); } }
 function onWave(){ const now=Date.now(); if(now<waveMsgT)return; waveMsgT=now+5000; sleepAt=now+SLEEP_MS;
-  if(state==='sleeping'||state==='yawning')return; $('#bubble').textContent='👋 안녕~!'; body.classList.add('wave'); setTimeout(()=>body.classList.remove('wave'),2500); state=''; setState('excited'); }
+  if(state==='sleeping'||state==='yawning')return; $('#btext').textContent='👋 안녕~!'; $('#heard').textContent=''; body.classList.add('wave'); setTimeout(()=>body.classList.remove('wave'),2500); state=''; setState('excited'); }
 const E=(id)=>{const g=$(id),q=c=>g.querySelector(c);return{g,open:q('.open'),iris:q('.iris'),pupil:q('.pupil'),happy:q('.happy'),closed:q('.closed'),heart:q('.heart'),star:q('.star'),spiral:q('.spiral')};};
 const eyes=[[E('#eyeL'),260],[E('#eyeR'),540]];
 const ease=t=>t<0?0:t>1?1:t*t*(3-2*t);
@@ -43,7 +62,7 @@ const MOUTH={sad:'M360 395 Q400 360 440 395',angry:'M355 390 L378 375 L400 390 L
   dizzy:'M350 375 Q365 360 380 375 Q395 390 410 375 Q425 360 440 375 Q455 390 465 378',startled:'M380 365 Q400 350 420 365 Q420 395 400 395 Q380 395 380 365Z'};
 let lastT=performance.now();
 function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn-lastT)/1000); lastT=pn; const t=pn/1000, st=(now-stT)/1000;
-  if(DEMO){ if(state!==DEMO){ if(DEMO==='greeting')$('#bubble').textContent='안녕하세요!'; setState(DEMO);} }
+  if(DEMO){ if(state!==DEMO){ if(DEMO==='greeting')$('#btext').textContent='안녕하세요!'; setState(DEMO);} }
   else {
   if(faceVisible && now-lastSeen>LOST_MS){ faceVisible=false; faces=[]; sleepAt=now+SLEEP_MS; target={x:0,y:0}; }
   if(state==='surprised'&&st>0.7) showBubble(pendingMsg);
@@ -53,11 +72,12 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   else if(EMO[state]&&st>EMO[state]){ const q=queued; queued=''; if(q==='greet') showBubble(pendingMsg); else if(q) setState(q); else setState(faceVisible?'happy':'idle'); }
   else if(['idle','happy',''].includes(state)){
     if(faceVisible) setState('happy'); else if(now>sleepAt) setState('yawning'); else setState('idle');
+    if(faceVisible&&askAt&&now>askAt&&!SP.busy?.()&&!['sleeping','yawning'].includes(state)){ askAt=now+25000; const q=DLG.ask(curLang); say(q.text,'curious'); }
     if(now>randT){ randT=now+8000+Math.random()*9000;
       const pool=faceVisible?['wink','hearteyes','stareyes','shy','excited','curious']:NIGHT?['sleepy','sleepy','curious','eyeroll']:MORNING?['excited','curious','stareyes','wink']:['curious','eyeroll','sad','angry','dizzy','excited','sleepy'];
       emote(pool[Math.floor(Math.random()*pool.length)]); } }
   }
-  const S=state, asleep=S==='sleeping', joy=S==='happy'||S==='greeting'||S==='excited'||S==='hearteyes'||S==='stareyes';
+  const S=state, asleep=S==='sleeping', joy=S==='happy'||S==='laugh'||S==='greeting'||S==='excited'||S==='hearteyes'||S==='stareyes';
   // ── 시선
   if(S==='idle'&&Math.random()<dt*0.5) target={x:Math.random()*1.6-.8,y:Math.random()*1-.5};
   if(!faceVisible&&S!=='idle'){ target.x*=1-dt*2; target.y*=1-dt*2; }
@@ -72,6 +92,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(S==='greeting'&&st<1){ const b=Math.sin(st*18)*Math.exp(-st*5)*.12; sx-=b; sy+=b; }
   if(S==='surprised'||S==='startled'){ const j=Math.sin(Math.min(st/.35,1)*Math.PI); oy-=j*30; sy+=j*.06; sx-=j*.04; }
   if(S==='waking'){ const p=Math.sin(Math.min(st/1.2,1)*Math.PI); sy+=p*.14; sx-=p*.08; oy-=p*25; }
+  if(S==='laugh'){ const b=Math.abs(Math.sin(st*14)); oy-=b*14; sy+=b*.04; sx-=b*.02; }
   if(S==='excited'){ const b=Math.abs(Math.sin(st*9)); oy-=b*28; sy+=b*.05; sx-=b*.03; }
   if(S==='angry') ox=Math.sin(t*40)*4*(st<1?1:.3);
   if(S==='sad') oy+=15; if(asleep) oy+=25; if(S==='yawning') oy+=ease(st/2.4)*18;
@@ -89,7 +110,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(S==='waking'){ open=st<.5?.15:(st<.7?1:(st<.85?.1:1)); }
   if(S==='sleepy'||(S==='idle'&&NIGHT)) open=Math.min(open,.45+Math.sin(t*.9)*.08);
   if(S==='sad') open=Math.min(open,.8); if(S==='angry') open=Math.min(open,.6);
-  if(S==='shy') mode='happy'; if(S==='excited'){ eyeScale=1.1; pupilS=1.15; }
+  if(S==='shy'||S==='laugh') mode='happy'; if(S==='excited'){ eyeScale=1.1; pupilS=1.15; }
   if(S==='wink') modes=['open','happy']; if(S==='hearteyes') mode='heart'; if(S==='stareyes') mode='star'; if(S==='dizzy') mode='spiral';
   if(S==='curious') scales=[1.12,.9];
   eyes.forEach(([e,cx],i)=>{ const md=modes?modes[i]:mode, sc=scales?scales[i]:eyeScale*(md==='heart'?1+Math.abs(Math.sin(t*6))*.08:1);
@@ -114,6 +135,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   else if(S==='yawning'){ const r=ease(st/0.8)*(st<1.9?1:Math.max(0,1-(st-1.9)*2)); d=`M400 ${355-r*25} a${14+r*30} ${6+r*45} 0 1 0 0.1 0Z`; fill='#1e120a'; }
   else if(S==='greeting'){ const o=st<1.6?(Math.abs(Math.sin(st*11))*25+12):22; d=`M340 360 Q400 ${375+o*2.4} 460 360 Z`; fill='#c2302a'; }
   else if(S==='happy'||S==='hearteyes'||S==='stareyes'){ d='M350 360 Q400 420 450 360 Z'; fill='#c2302a'; }
+  else if(S==='laugh'){ const o=Math.abs(Math.sin(st*14))*30+40; d=`M330 350 Q400 ${355+o*2.3} 470 350 Z`; fill='#c2302a'; }
   else if(S==='excited'){ const o=Math.abs(Math.sin(st*9))*20+30; d=`M335 355 Q400 ${360+o*2.2} 465 355 Z`; fill='#c2302a'; }
   else if(MOUTH[S]){ d=MOUTH[S]; if(S==='curious'||S==='startled') fill='#1e120a'; }
   else if(asleep){ d='M385 380 Q400 388 415 380'; }
@@ -122,7 +144,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   m.setAttribute('d',d); m.setAttribute('fill',fill);
   $('#blush').setAttribute('opacity',S==='shy'?1:joy?.75:(asleep?.3:.45));
   $('#bang').style.opacity=S==='surprised'||S==='startled'?1:0;
-  if(joy&&now>fxT){ fxT=now+(S==='greeting'||S==='excited'?350:900); spawnFx(S==='hearteyes'?'♥':S==='stareyes'?'✦':''); }
+  if(joy&&now>fxT){ fxT=now+(S==='greeting'||S==='excited'?350:900); spawnFx(S==='hearteyes'?'♥':S==='stareyes'?'✦':S==='laugh'?(curLang==='ko'?'ㅎ':curLang==='ja'?'笑':'ha'):''); }
   requestAnimationFrame(tick); }
 setState(DEMO||'idle'); requestAnimationFrame(tick);
 $('#btnFs').onclick=()=>{ const d=document,el=d.documentElement; if(d.fullscreenElement||d.webkitFullscreenElement){(d.exitFullscreen||d.webkitExitFullscreen).call(d);return;} const f=el.requestFullscreen||el.webkitRequestFullscreen; if(f)f.call(el); else status.textContent='iPhone은 공유 → 홈 화면에 추가로 전체화면 사용'; };
@@ -163,4 +185,6 @@ document.addEventListener('keydown',e=>{ if(e.key==='m'||e.key==='M')toggleMic()
 $('#tap').onclick=async()=>{ $('#tap').remove();
   try{ await video.play(); }catch{}
   await window.startCam(); video.play().catch(()=>{}); };
-if(DEMO) $('#tap').remove();
+if(DEMO||Q.get('say')) $('#tap').remove();
+// 데모: ?say=문장&lang=ko|en|zh|yue|ja → 대화 엔진 테스트
+if(Q.get('say')) setTimeout(()=>greetLang({lang:Q.get('lang')||'ko',text:Q.get('say'),dbg:'demo'}),300);

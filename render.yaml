@@ -1,0 +1,18 @@
+# Grok 프록시를 나중에 배포할 때 사용 (Render Blueprint). 정적 사이트(tv-character)는 기존 서비스 그대로 둡니다.
+services:
+  - type: web
+    name: tv-character-api
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: echo no-build
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: XAI_API_KEY
+        sync: false
+      - key: XAI_MODEL
+        value: grok-4.20-0309-non-reasoning
+      - key: ALLOWED_ORIGINS
+        value: https://tv-character.onrender.com
