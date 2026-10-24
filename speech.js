@@ -1,5 +1,5 @@
 // 마이크 음성 언어 감지 (Whisper, transformers.js, 브라우저 내 실행)
-const TJS="https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.1";
+const TJS=new URL("./vendor/transformers/transformers.min.js",import.meta.url).href; // 자체 호스팅 (Whisper 가중치만 Hugging Face에서 받음)
 export const MOBILE=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Mac/.test(navigator.userAgent));
 const MODEL=MOBILE?"onnx-community/whisper-tiny":"onnx-community/whisper-base"; // 다국어 (tiny로 바꾸면 더 빠름: onnx-community/whisper-tiny)
 export const LANGS={
@@ -13,6 +13,7 @@ const CANTO=/[係嘅唔咁佢冇啲喺咩嘢哋囉噉喇咗]/;
 let T,model,proc,tok,ctx,stream,node,src,on=false,busy=false;
 export async function load(status){
   T=await import(TJS);
+  T.env.backends.onnx.wasm.wasmPaths=new URL('./vendor/transformers/',import.meta.url).href;
   const gpu=!!navigator.gpu&&!!(await navigator.gpu.requestAdapter().catch(()=>null));
   status(`음성 모델 다운로드 중… (${gpu?'WebGPU':'WASM'})`);
   const cb=p=>{ if(p.status==='progress'&&p.file?.endsWith('.onnx')) status(`음성 모델 ${p.file.split('/').pop()} ${Math.round(p.progress)}%`); };
