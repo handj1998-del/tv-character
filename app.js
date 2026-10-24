@@ -11,16 +11,18 @@ function greetLang(r){ const L=SP.LANGS[r.lang];
   $('#bubble').textContent=L.text; greetUntil=Date.now()+GREET_MS; sleepAt=Date.now()+SLEEP_MS; state='';
   setState('greeting'); status.textContent=`감지된 언어: ${L.label} — "${r.text}"`; say(L.text,L.tts); }
 function greet(wasSleeping){ const msg=wasSleeping?'앗, 깼어요! 안녕하세요!':'안녕하세요!'; $('#bubble').textContent=msg; greetUntil=Date.now()+GREET_MS; setState('greeting'); say(msg); }
-function onFace(x,y){ const now=Date.now(); if(!faceVisible){ faceVisible=true; greet(state==='sleeping'); } lastSeen=now; target={x:-(x*2-1),y:y*2-1}; } // mirrored
+function onFace(x,y){ const now=Date.now(); if(!faceVisible){ faceVisible=true; greet(state==='sleeping'); } lastSeen=now; target={x:Math.max(-1,Math.min(1,-(x*2-1)*1.6)),y:Math.max(-1,Math.min(1,(y*2-1)*1.8))}; } // 카메라 원본은 좌우반전 → 사람이 자기 왼쪽으로 가면 캐릭터도 화면 왼쪽(사람 쪽)을 봄
 function tick(){ const now=Date.now();
-  if(faceVisible && now-lastSeen>LOST_MS){ faceVisible=false; sleepAt=now+SLEEP_MS; }
+  if(faceVisible && now-lastSeen>LOST_MS){ faceVisible=false; sleepAt=now+SLEEP_MS; target={x:0,y:0}; }
+  if(!faceVisible && now-lastSeen>400 && state!=='idle') { target.x*=0.97; target.y*=0.97; }
   if(state==='greeting' && now>greetUntil) setState(faceVisible?'happy':'idle');
   if(state!=='greeting'){ if(faceVisible) setState('happy'); else if(now>sleepAt) setState('sleeping'); else setState('idle'); }
   if(state==='idle' && Math.random()<0.01) target={x:Math.random()*2-1,y:Math.random()*1.2-0.6};
-  look.x+=(target.x-look.x)*0.08; look.y+=(target.y-look.y)*0.08;
+  const dt=Math.min(50,now-(window._lt||now)); window._lt=now; const k=1-Math.pow(1-(faceVisible?0.18:0.06),dt/16.7); look.x+=(target.x-look.x)*k; look.y+=(target.y-look.y)*k;
+  const sl=state==='sleeping'; $('#face').style.transform=`perspective(1200px) translate(${sl?0:look.x*4}vw,${sl?2:look.y*2.5}vh) rotateY(${sl?0:look.x*14}deg) rotateX(${sl?0:-look.y*10}deg) rotate(${sl?-6:look.x*5}deg)`;
   let sy=1; if(now>blinkT){ blinkT=now+2000+Math.random()*4000; } const d=blinkT-now; if(d<150) sy=Math.abs(d-75)/75;
   const t=now/1000, bob=state==='sleeping'?Math.sin(t)*6:Math.sin(t*2)*4;
-  for(const [id,cx] of [['#eyeL',270],['#eyeR',530]]){ const g=$(id); g.setAttribute('transform',`translate(${cx+look.x*25},${270+look.y*20+bob}) scale(1,${sy})`); g.querySelector('.pupil').setAttribute('cx',look.x*30); g.querySelector('.pupil').setAttribute('cy',look.y*35); }
+  for(const [id,cx] of [['#eyeL',270],['#eyeR',530]]){ const g=$(id); g.setAttribute('transform',`translate(${cx+look.x*30},${270+look.y*25+bob}) scale(1,${sy})`); g.querySelector('.pupil').setAttribute('cx',look.x*40); g.querySelector('.pupil').setAttribute('cy',look.y*55); g.querySelector('.shine').setAttribute('cx',-18+look.x*40); g.querySelector('.shine').setAttribute('cy',-24+look.y*55); }
   $('#mouth').setAttribute('d', state==='sleeping'?'M380 440 Q400 445 420 440': (state==='happy'||state==='greeting')?'M330 420 Q400 500 470 420':'M360 430 Q400 450 440 430');
   requestAnimationFrame(tick); }
 setState('idle'); body.classList.add('idle'); requestAnimationFrame(tick);
@@ -36,7 +38,7 @@ window.startCam=async()=>{ try{
   status.textContent='준비 완료!'; let last=-1;
   setInterval(()=>{ if(video.readyState<2||video.currentTime===last)return; last=video.currentTime;
     const r=det.detectForVideo(video,performance.now()); if(r.detections.length){ const b=r.detections.sort((a,b)=>b.boundingBox.width-a.boundingBox.width)[0].boundingBox;
-      onFace((b.originX+b.width/2)/video.videoWidth,(b.originY+b.height/2)/video.videoHeight);} },100);
+      onFace((b.originX+b.width/2)/video.videoWidth,(b.originY+b.height/2)/video.videoHeight);} },33);
  }catch(e){ console.error(e); status.textContent='카메라/모델 오류: '+e.message+' (localhost 또는 https 필요)'; } };
 
 let micLoading=false;

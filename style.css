@@ -2,7 +2,7 @@ html,body{margin:0;height:100%;background:#101828;overflow:hidden;font-family:sa
 body:hover{cursor:default}
 #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;transition:background 1s}
 body.sleeping #stage{background:#060a14}
-#face{width:min(95vw,127vh);height:auto}
+#face{width:min(95vw,127vh);height:auto;will-change:transform;transform-origin:50% 55%}
 .eye{fill:#fff}.pupil{fill:#1d2939}.shine{fill:#fff}
 .arc{fill:none;stroke:#fff;stroke-width:18;stroke-linecap:round}
 #happyL,#happyR,#sleepL,#sleepR,#wave{opacity:0;transition:opacity .3s}
