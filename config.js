@@ -32,3 +32,5 @@ export const LIVE={
 
 // 요일별 캐릭터. 하나로 고정하려면 0(일)~6(토) 또는 이름(id: kongi,sunny,momo,pip,peach,pop,lala). 시험: ?char=3
 export const CHAR_PIN=null;
+// 카메라: 'back'(후면, 휴대폰/태블릿 기본) | 'front'. PC 웹캠은 방향 정보가 없어 그대로 사용. ?cam=front|back 로 덮어쓰기
+export const CAMERA_FACING='back';

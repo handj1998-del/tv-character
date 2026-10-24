@@ -3,7 +3,7 @@ import * as SP from "./speech.js";
 import * as DLG from "./dialogue.js";
 import * as GS from "./gestures.js";
 import { GROK_ENDPOINT, GROK_TIMEOUT_MS, SCENE_ENABLED, SCENE_MIN_GAP_MS } from "./config.js";
-import { LIVE, CHAR_PIN } from "./config.js";
+import { LIVE, CHAR_PIN, CAMERA_FACING } from "./config.js";
 import { CHARS, pickChar, charGreet } from "./chars.js";
 import { createCrowd, greetPhrase, byePhrase, filterBackground, attention } from "./crowd.js";
 import { createWaker, diffFrame, wakeMsg, goneMsg, WAKE } from "./wake.js";
@@ -75,7 +75,7 @@ function onFaces(list){ const now=Date.now(); if(!list.length)return;
   if(state==='happy'&&now-faceSince>8000&&now>stareCD){ stareCD=now+20000; emote('wink','hearteyes'); } }
 // ── 시선 추적: 얼굴 여러 명 둘러보기 + 움직임 추적
 // 카메라 영상은 거울상이 아니므로 x를 뒤집음: 화면 앞 시청자 기준 왼쪽 사람 → 눈동자 화면 왼쪽
-const toGaze=(x,y)=>({x:Math.max(-1,Math.min(1,-(x*2-1)*1.5)),y:Math.max(-1,Math.min(1,(y*2-1)*1.6))});
+var MIRROR=true; const toGaze=(x,y)=>({x:Math.max(-1,Math.min(1,(MIRROR?-1:1)*(x*2-1)*1.5)),y:Math.max(-1,Math.min(1,(y*2-1)*1.6))});
 let tracks=[], nextId=1, curId=0, switchT=0, sacUntil=0, trackSrc='', motion=null, motionT=0;
 const CR=createCrowd(LIVE); var bubbleT=0, crowdT=0, engageT=Date.now(); window.__crowd=CR;
 function canBubble(now){ return now-bubbleT>=LIVE.BUBBLE_GAP_MS&&now-lastTalk>=LIVE.BUBBLE_GAP_MS; }
@@ -126,15 +126,15 @@ applyChar(C);
 setInterval(()=>{ if(Q.get('char')||CHAR_PIN!=null) return; const n=pickChar(null,null); if(n!==C) applyChar(n); },30000); // 자정에 자동 교체
 const DBG=Q.get('debug')==='1'; let dbg=null;
 if(DBG){ dbg=document.createElement('canvas'); dbg.width=360; dbg.height=240; dbg.style.cssText='position:fixed;left:8px;top:8px;z-index:99;border:2px solid #000;background:#000;width:360px;height:240px'; document.body.appendChild(dbg); }
-function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=360,H=240; c.save(); c.translate(W,0); c.scale(-1,1); if(video.readyState>=2) c.drawImage(video,0,0,W,H); c.restore();
-  const X=x=>(1-x)*W; c.lineWidth=2; c.font='12px sans-serif';
+function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=360,H=240; c.save(); if(MIRROR){ c.translate(W,0); c.scale(-1,1); } if(video.readyState>=2) c.drawImage(video,0,0,W,H); c.restore();
+  const X=x=>MIRROR?(1-x)*W:x*W; c.lineWidth=2; c.font='12px sans-serif';
   c.fillStyle='#000a'; c.fillRect(0,H-18,W,18); c.fillStyle=WK.level>=WAKE.areaMin?'#f0f':'#0f0'; c.fillRect(0,H-18,Math.min(W,WK.level/WAKE.areaMax*W),6); c.fillStyle='#fff'; c.fillText(`motion ${(WK.level*100).toFixed(1)}% (wake≥${WAKE.areaMin*100}% ${WAKE.holdMs}ms)`,4,H-4);
   for(const t of tracks){ const on=t.id===curId&&trackSrc==='face'&&faceVisible; c.strokeStyle=on?'#0f0':'#fff'; const w=t.w*W, h=w*(4/3)*(W/H)*.75; c.strokeRect(X(t.x)-w/2,t.y*H-h/2,w,h); c.fillStyle=c.strokeStyle; c.fillText((on?'▶ ':'')+'#'+t.id,X(t.x)-w/2,t.y*H-h/2-3); }
   if(motion&&Date.now()-motionT<600){ c.fillStyle='#f0f'; c.beginPath(); c.arc(X(motion.x),motion.y*H,5,0,7); c.fill(); }
   c.strokeStyle='#ff0'; c.beginPath(); c.arc(W/2+look.x/1.5*W/2,H/2+look.y/1.6*H/2,7,0,7); c.stroke();
   c.fillStyle='#ff0'; c.strokeStyle='#0af'; for(const t of ftracks) c.strokeRect(X(t.x)-t.w*W/2,t.y*H-t.h*H/2,t.w*W,t.h*H); c.fillStyle='#fff'; c.fillText(`${VI.src||'-'} ${(VI.conf||0).toFixed(2)} | 검출 ${VI.detHz}/s | 화면 ${VI.fps|0}fps | 밝기 ${lumaAvg|0}${VI.boost>1?' 보정x'+VI.boost.toFixed(1):''} | 손 ${VI.hands??0}`,4,28); c.fillStyle='#0ff'; c.fillText(`손/몸: ${gestLive||'-'}  최근: ${gestLast||'-'}  ${VI.gl||''}`,4,14);
   const D_=window.__det, pc=k=>D_.calls?Math.round(D_[k]/D_.calls*100):0; c.fillStyle='#000a'; c.fillRect(0,32,W,30); c.fillStyle='#fff';
-  c.fillText(`${VI.res||'?'} | ${Object.entries(VI.be).map(([k,v])=>k+':'+v).join(' ')} | 지연 ${(VI.latA||0)|0}ms`,4,44);
+  c.fillText(`${VI.cam||''} ${VI.res||'?'} | ${Object.entries(VI.be).map(([k,v])=>k+':'+v).join(' ')} | 지연 ${(VI.latA||0)|0}ms`,4,44);
   c.fillText(`프레임 ${D_.calls} 얼굴 ${pc('face')}% 포즈 ${pc('pose')}% 움직임 ${pc('motion')}% 손 ${D_.handCalls?Math.round(D_.hand/D_.handCalls*100):0}%`,4,58); c.fillStyle='#ff0'; c.fillText(`${trackSrc||'idle'} gaze ${look.x.toFixed(2)},${look.y.toFixed(2)}`,4,H-6); }
 let gestLive='', gestLast='';
 function onGesture(g){ const now=Date.now(); lastGest=g; lastGestT=now; gestLast=g+' '+new Date().toLocaleTimeString(); sleepAt=now+SLEEP_MS;
@@ -249,6 +249,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   requestAnimationFrame(tick); }
 setState(DEMO||(MOTION_DEMO?'sleeping':'idle')); requestAnimationFrame(tick);
 if(MOTION_DEMO){ sleepAt=Date.now()+1e9; setTimeout(()=>{ motion={x:.25,y:.5,n:200}; wakeByMotion(Date.now()); },1500); }
+$('#btnCamSw').onclick=()=>window.switchCam();
 $('#btnFs').onclick=()=>{ const d=document,el=d.documentElement; if(d.fullscreenElement||d.webkitFullscreenElement){(d.exitFullscreen||d.webkitExitFullscreen).call(d);return;} const f=el.requestFullscreen||el.webkitRequestFullscreen; if(f)f.call(el); else status.textContent='iPhone은 공유 → 홈 화면에 추가로 전체화면 사용'; };
 $('#btnCam').onclick=()=>body.classList.toggle('showcam');
 document.addEventListener('keydown',e=>{ if(e.key==='f')$('#btnFs').click(); if(e.key==='c')$('#btnCam').click(); });
@@ -287,9 +288,25 @@ function updateTracks(dets,now){ for(const d of dets){ let best=null,bi=.15; for
   // 놓쳐도 1.2초 유지(예측 위치로 이동), 확정은 2번 이상 잡히거나 확신도 높을 때
   for(const t of ftracks) if(t.seen<now){ const dt=Math.min(300,now-t.seen); t.x+=t.vx*dt*.5; t.y+=t.vy*dt*.5; t.vx*=.7; t.vy*=.7; }
   ftracks=ftracks.filter(t=>now-t.seen<1200&&(t.hits>=2||now-t.seen<300)); return ftracks.filter(t=>t.hits>=2||t.conf>.5); }
+// ── 카메라 열기: 후면이면 메인 광각 렌즈 우선, 최대 해상도, 연속 초점/노출
+var camFacing=(Q.get('cam')||localStorage.getItem('tvcam')||CAMERA_FACING)==='front'?'front':'back', camRear=false;
+const BADLENS=/ultra|wide.?angle|0\.5|tele|depth|infrared|ir |macro|초광각|광각|망원|심도/i, BACK=/back|rear|environment|후면|뒤/i;
+async function openCam(){ const old=video.srcObject; if(old) old.getTracks().forEach(t=>t.stop());
+  const want=camFacing==='back'?'environment':'user', base={width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}};
+  let st=null; try{ st=await navigator.mediaDevices.getUserMedia({video:{...base,facingMode:{ideal:want}}}); }catch(e){ st=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},facingMode:{ideal:want}}}); }
+  let tr=st.getVideoTracks()[0];
+  if(camFacing==='back'){ try{ const ds=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'&&BACK.test(d.label));
+      const main=ds.find(d=>!BADLENS.test(d.label))||ds[0], cur=tr.getSettings().deviceId;
+      if(main&&main.deviceId&&main.deviceId!==cur){ st.getTracks().forEach(t=>t.stop()); st=await navigator.mediaDevices.getUserMedia({video:{...base,deviceId:{exact:main.deviceId}}}); tr=st.getVideoTracks()[0]; } }catch(e){ console.warn('lens pick',e); } }
+  try{ const cp=tr.getCapabilities?.()||{}, adv={}; if((cp.focusMode||[]).includes('continuous')) adv.focusMode='continuous'; if((cp.exposureMode||[]).includes('continuous')) adv.exposureMode='continuous'; if((cp.whiteBalanceMode||[]).includes('continuous')) adv.whiteBalanceMode='continuous'; if(Object.keys(adv).length) await tr.applyConstraints({advanced:[adv]}); }catch(e){}
+  video.srcObject=st; const S=tr.getSettings(); camRear=S.facingMode==='environment'||(!S.facingMode&&camFacing==='back'&&BACK.test(tr.label));
+  // 후면 카메라는 화면 좌우가 반대 → 시선 x를 뒤집지 않음. PC 웹캠(방향 정보 없음)은 기존 동작
+  MIRROR=Q.get('mirror')!=null?Q.get('mirror')==='1':!camRear; video.style.transform=camRear?'none':'scaleX(-1)';
+  VI.res=`${S.width}x${S.height}@${Math.round(S.frameRate||0)}`; VI.cam=(tr.label||'?').slice(0,28)+(S.facingMode?' ['+S.facingMode+']':''); console.log('camera',tr.label,S);
+  const b=$('#btnCamSw'); if(b) b.textContent=camFacing==='back'?'🔄 후면 카메라':'🔄 전면 카메라'; }
+window.switchCam=async()=>{ camFacing=camFacing==='back'?'front':'back'; localStorage.setItem('tvcam',camFacing); try{ await openCam(); video.play().catch(()=>{}); }catch(e){ status.textContent='카메라 전환 실패: '+e.message; } };
 window.startCam=async()=>{ try{
-  video.srcObject=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:MOB?1280:1920},height:{ideal:MOB?720:1080},frameRate:{ideal:30}}});
-  try{ const st=video.srcObject.getVideoTracks()[0].getSettings(); VI.res=`${st.width}x${st.height}@${Math.round(st.frameRate||0)}`; console.log('camera',st); }catch(e){}
+  await openCam();
   setInterval(motionStep,66);
   status.textContent='얼굴 인식 모델 불러오는 중…';
   const fs=await FilesetResolver.forVisionTasks("./vendor/mediapipe/wasm");
