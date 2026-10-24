@@ -282,3 +282,7 @@ if(Q.get('autocam')==='1'){ $('#tap')?.remove(); window.startCam().then(()=>vide
 if(DBG) window.__onFaces=onFaces;
 
 if(Q.get('gesture')) setTimeout(()=>{ $('#tap')?.remove(); onGesture(Q.get('gesture')); },400);
+// 전체화면이면 메뉴 숨김, 두 번 탭하면 전체화면 종료
+(()=>{const d=document;const upd=()=>d.body.classList.toggle('fs',!!(d.fullscreenElement||d.webkitFullscreenElement));
+d.addEventListener('fullscreenchange',upd);d.addEventListener('webkitfullscreenchange',upd);
+d.addEventListener('dblclick',()=>{if(d.fullscreenElement||d.webkitFullscreenElement)(d.exitFullscreen||d.webkitExitFullscreen).call(d);});})();
