@@ -21,7 +21,11 @@ export function poseShape(p){ if(!p||p.length<17) return '';
   return ''; }
 export const HOLD={fingerheart:500,ok:500,thumbsup:500,v:500,point:600,stop:1200,bigheart:500,armsup:500,cover:600};
 export const COOL={wave:5000,fingerheart:5000,ok:5000,thumbsup:5000,v:5000,point:6000,stop:6000,bigheart:6000,armsup:6000,clap:5000,peekaboo:6000};
-export function createDetector(){ let vote=[],cur='',since=0,fired='',palmX=[],gap=[],coverSince=0; const last={}; let any=0;
+// 방향 전환 횟수(작은 떨림 eps 무시)
+export function revs(xs,eps){ let n=0,dir=0,ref=xs[0]; for(const x of xs){ const d=x-ref; if(Math.abs(d)>eps){ const s=Math.sign(d); if(dir&&s!==dir) n++; dir=s; ref=x; } } return n; }
+// 움직임 덩어리 좌우 왕복 → 흔들기 (손 모델이 못 잡는 먼 거리용)
+export function createOsc(){ let h=[]; return { step(now,x,eps=.02){ h=h.filter(v=>now-v[0]<1400); h.push([now,x]); const xs=h.map(v=>v[1]); if(xs.length>=6&&Math.max(...xs)-Math.min(...xs)>eps*2.5&&revs(xs,eps)>=3){ h=[]; return true; } return false; }, reset(){ h=[]; } }; }
+export function createDetector(){ let vote=[],cur='',since=0,fired='',palmX=[],gap=[],coverSince=0, lastHandT=0; const wristX={}; const last={}; let any=0;
   function fire(g,now){ if(now<(last[g]||0)||now<any) return ''; last[g]=now+COOL[g]; any=now+1500; return g; }
   return { step(now,{hands=[],builtins=[],pose=null}={}){
     const shapes=hands.map((l,k)=>handShape(l,builtins[k]||'')); const ps=poseShape(pose); let out='';
@@ -30,11 +34,18 @@ export function createDetector(){ let vote=[],cur='',since=0,fired='',palmX=[],g
       const st=d<s*1.3?'in':d>s*2.2?'out':''; if(st&&(!gap.length||gap[gap.length-1][1]!==st)) gap.push([now,st]); }
     gap=gap.filter(x=>now-x[0]<1600); if(gap.filter(x=>x[1]==='in').length>=2&&gap.length>=4){ gap=[]; out=fire('clap',now); }
     // 흔들기 / 멈춤(손바닥 고정)
-    const pi=shapes.indexOf('palm'); if(pi>=0){ palmX.push([now,hands[pi][0].x]); } else palmX=[];
-    palmX=palmX.filter(x=>now-x[0]<1300); const xs=palmX.map(x=>x[1]), rg=xs.length?Math.max(...xs)-Math.min(...xs):0;
-    if(!out&&xs.length>=4&&rg>.07){ palmX=[]; out=fire('wave',now); }
+    // 흔들기: 손바닥(또는 손가락 3개 이상 펴진 손)의 좌우 왕복. 한두 프레임 놓쳐도 이어서 판정
+    let pi=shapes.indexOf('palm'); if(pi<0) pi=hands.findIndex(l=>l&&l.length>=21&&[[8,6],[12,10],[16,14],[20,18]].filter(([a,b])=>ext(l,a,b)).length>=3);
+    if(pi>=0){ palmX.push([now,hands[pi][9].x,D(hands[pi][0],hands[pi][9])]); lastHandT=now; } else if(now-lastHandT>450) palmX=[];
+    palmX=palmX.filter(x=>now-x[0]<1500); const xs=palmX.map(x=>x[1]), rg=xs.length?Math.max(...xs)-Math.min(...xs):0, hs=palmX.length?palmX[palmX.length-1][2]:.1;
+    if(!out&&xs.length>=4&&(rg>.07||(rg>hs*.6&&revs(xs,hs*.15)>=2))){ palmX=[]; out=fire('wave',now); }
+    // 포즈로 흔들기: 손목이 어깨보다 위에서 좌우 왕복 (멀리 있어서 손 랜드마크가 안 잡힐 때)
+    if(pose&&pose.length>=17){ const sw=D(pose[11],pose[12])||.05; for(const [w,sh] of [[15,11],[16,12]]){ const W=pose[w]; if((W.visibility??1)>.4&&W.y<pose[sh].y){ wristX[w]=(wristX[w]||[]).filter(x=>now-x[0]<1600); wristX[w].push([now,W.x]); } else wristX[w]=[];
+        const ws=(wristX[w]||[]).map(x=>x[1]); if(!out&&ws.length>=4&&Math.max(...ws)-Math.min(...ws)>sw*.3&&revs(ws,sw*.08)>=2){ wristX[w]=[]; out=fire('wave',now); } } }
+    // 두 손 하트: 양손 검지 끝끼리, 엄지 끝끼리 맞닿음
+    let twoHeart=false; if(hands.length===2&&hands[0].length>=21&&hands[1].length>=21){ const a=hands[0],b=hands[1],s=(D(a[0],a[9])+D(b[0],b[9]))/2; twoHeart=D(a[8],b[8])<s*.55&&D(a[4],b[4])<s*.55&&D(a[0],b[0])>s*.8; }
     // 정적 동작: 포즈 우선
-    let g0=ps&&ps!=='cover'?ps:(shapes.find(x=>x&&x!=='palm')||''); vote.push(g0); if(vote.length>5) vote.shift();
+    let g0=ps&&ps!=='cover'?ps:twoHeart?'fingerheart':(shapes.find(x=>x&&x!=='palm')||''); vote.push(g0); if(vote.length>5) vote.shift();
     const cnt={}; for(const v of vote) cnt[v]=(cnt[v]||0)+1; let g=Object.keys(cnt).find(k=>cnt[k]>=3)??(cur&&cnt[cur]>=2?cur:'');
     if(!g&&pi>=0&&xs.length>=3&&rg<.03) g='stop';
     if(g!==cur){ cur=g; since=now; fired=''; }
