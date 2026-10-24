@@ -47,3 +47,7 @@ html,body{height:100dvh;touch-action:manipulation;-webkit-user-select:none;user-
 body.fs #ui{display:none!important}
 body.fs{cursor:none}
 @media (display-mode: fullscreen),(display-mode: standalone){#ui{display:none!important}}
+
+#scenecam{position:fixed;top:14px;right:16px;font-size:22px;opacity:0;pointer-events:none;z-index:50;background:rgba(0,0,0,.35);border-radius:999px;padding:4px 8px}
+#scenecam.on{animation:scenecam 2.2s ease-out}
+@keyframes scenecam{0%{opacity:0;transform:scale(.6)}10%{opacity:1;transform:scale(1.1)}80%{opacity:1}100%{opacity:0}}

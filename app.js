@@ -2,7 +2,8 @@ import { FaceDetector, GestureRecognizer, PoseLandmarker, FilesetResolver } from
 import * as SP from "./speech.js";
 import * as DLG from "./dialogue.js";
 import * as GS from "./gestures.js";
-import { GROK_ENDPOINT, GROK_TIMEOUT_MS } from "./config.js";
+import { GROK_ENDPOINT, GROK_TIMEOUT_MS, SCENE_ENABLED, SCENE_MIN_GAP_MS } from "./config.js";
+import { grokCtx, wantsScene, pushHist } from "./grokctx.js";
 const $=s=>document.querySelector(s), body=document.body, video=$('#video'), status=$('#status');
 const Q=new URLSearchParams(location.search), DEMO=Q.get('state');
 const HR=Q.get('time')==='night'?23:Q.get('time')==='morning'?8:new Date().getHours();
@@ -15,7 +16,7 @@ let target={x:0,y:0}, look={x:0,y:0}, sac={x:0,y:0}, sacT=0, blinkT=Date.now()+2
 let faces=[], faceIdx=0, faceSwT=0, shyCD=0, stareCD=0, randT=Date.now()+9000, waveMsgT=0;
 const LABEL={idle:NIGHT?'밤이라 조금 졸려요…':MORNING?'좋은 아침이에요! ☀':'두리번두리번…',surprised:'앗! 누구지?',greeting:'인사 중!',happy:'함께 있어서 행복해요',yawning:'하아암… 졸려요',sleeping:'쿨쿨 자는 중…',waking:'으쌰~ 기지개!',
   sad:'시무룩…',angry:'흥!',shy:'부끄러워요…',sleepy:'졸려요…',excited:'신난다!',curious:'음? 뭐지?',wink:'찡긋 😉',eyeroll:'에휴~',hearteyes:'좋아요 ♥',stareyes:'반짝반짝 ✦',dizzy:'어질어질~',startled:'깜짝이야! 💦',laugh:'ㅎㅎㅎ 웃는 중'};
-function setState(s){ if(state===s)return; state=s; stT=Date.now(); body.classList.remove(...ALL); body.classList.add(s); status.textContent=LABEL[s]; }
+function setState(s){ if(state===s)return; if(s==='greeting'&&typeof SCENE!=='undefined'&&SCENE&&Date.now()-sceneAt>SCENE_MIN_GAP_MS) setTimeout(()=>askGrok('',curLang||'ko',{scene:'greet'}).then(r=>r&&say(r.text,r.expr)),300); state=s; stT=Date.now(); body.classList.remove(...ALL); body.classList.add(s); status.textContent=LABEL[s]; }
 function emote(s,next=''){ if(['sleeping','yawning','waking','surprised','greeting'].includes(state))return; queued=next; setState(s); }
 function showBubble(msg){ say(msg,'greet'); if(!askAt||Date.now()>askAt-12000) askAt=Date.now()+7000; }
 let curLang='ko', lastTalk=0, askAt=0, talkTimer=0;
@@ -35,10 +36,21 @@ function say(text,expr,heard=''){ setBubble(text,heard); lastTalk=Date.now(); sl
 const GROK=new URLSearchParams(location.search).get('grok')||GROK_ENDPOINT;
 const SID=Math.random().toString(36).slice(2);
 const EXPR=['happy','laugh','shy','curious','sad','excited','wink','hearteyes','stareyes','sleepy','angry','dizzy','startled','eyeroll','greet'];
-async function askGrok(text,lang){ if(!GROK) return null; const ac=new AbortController(), to=setTimeout(()=>ac.abort(),GROK_TIMEOUT_MS);
-  try{ const r=await fetch(GROK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid:SID,lang,text,name:DLG.state.name||''}),signal:ac.signal});
+var SCENE=!!GROK&&(Q.get('scene')==='1'||SCENE_ENABLED); var sceneAt=0, lastGest='', lastGestT=0; const HIST=[];
+function snap(){ const v=document.getElementById('video'); if(!v||!v.videoWidth) return null; const k=Math.min(1,512/Math.max(v.videoWidth,v.videoHeight));
+  const c=document.createElement('canvas'); c.width=Math.round(v.videoWidth*k); c.height=Math.round(v.videoHeight*k); c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',0.6); }
+function sceneFlash(){ let el=document.getElementById('scenecam'); if(!el){ el=document.createElement('div'); el.id='scenecam'; el.textContent='📷'; document.body.appendChild(el); }
+  el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
+async function askGrok(text,lang,opt={}){ if(!GROK) return null; const ac=new AbortController(), to=setTimeout(()=>ac.abort(),GROK_TIMEOUT_MS);
+  const now=Date.now(); let image=null;
+  if(SCENE&&(opt.scene||wantsScene(text))&&(now-sceneAt>SCENE_MIN_GAP_MS||(!opt.scene&&wantsScene(text)))){ image=snap(); if(image){ sceneAt=now; sceneFlash(); } }
+  if(opt.scene&&!image) return null;
+  const ctx=grokCtx({people:tracks.length,hour:HR,gesture:now-lastGestT<30000?lastGest:'',state,lang});
+  try{ const r=await fetch(GROK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid:SID,lang,text,name:DLG.state.name||'',history:HIST.slice(-12),ctx,image,scene:opt.scene||undefined}),signal:ac.signal});
     if(!r.ok) throw new Error('HTTP '+r.status); const j=await r.json(); if(!j.text) throw new Error('empty');
-    return {text:String(j.text).slice(0,120),expr:EXPR.includes(j.expression)?j.expression:'happy',intent:'grok'}; }
+    const out={text:String(j.text).slice(0,120),expr:EXPR.includes(j.expression)?j.expression:'happy',intent:image?'grok+scene':'grok'};
+    pushHist(HIST,text||'(saw person)',out.text); return out; }
   catch(e){ console.warn('Grok 실패 → 규칙 기반',e.message); return null; } finally{ clearTimeout(to); } }
 async function greetLang(r){ const L=SP.LANGS[r.lang];
   if(!L){ status.textContent=`감지된 언어: ${r.lang||'?'} (지원 안 함) "${r.text}" [${r.dbg||""}]`; return; }
@@ -90,7 +102,7 @@ function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=360,H=240; 
   c.strokeStyle='#ff0'; c.beginPath(); c.arc(W/2+look.x/1.5*W/2,H/2+look.y/1.6*H/2,7,0,7); c.stroke();
   c.fillStyle='#ff0'; c.strokeStyle='#0af'; for(const t of ftracks) c.strokeRect(X(t.x)-t.w*W/2,t.y*H-t.h*H/2,t.w*W,t.h*H); c.fillStyle='#fff'; c.fillText(`${VI.src||'-'} ${(VI.conf||0).toFixed(2)} | 검출 ${VI.detHz}/s | 화면 ${VI.fps|0}fps | 밝기 ${lumaAvg|0}${VI.boost>1?' 보정x'+VI.boost.toFixed(1):''} | 손 ${VI.hands??0}`,4,28); c.fillStyle='#0ff'; c.fillText(`손/몸: ${gestLive||'-'}  최근: ${gestLast||'-'}`,4,14); c.fillStyle='#ff0'; c.fillText(`${trackSrc||'idle'} gaze ${look.x.toFixed(2)},${look.y.toFixed(2)}`,4,H-6); }
 let gestLive='', gestLast='';
-function onGesture(g){ const now=Date.now(); gestLast=g+' '+new Date().toLocaleTimeString(); sleepAt=now+SLEEP_MS;
+function onGesture(g){ const now=Date.now(); lastGest=g; lastGestT=now; gestLast=g+' '+new Date().toLocaleTimeString(); sleepAt=now+SLEEP_MS;
   if(state==='sleeping'||state==='yawning'){ setState('waking'); pendingMsg=GS.REACT.wave[1][curLang]; return; }
   const [ex,tx]=GS.REACT[g]; say(tx[curLang]||tx.ko, ex==='surprised'?'startled':ex);
   if(g==='bigheart'||g==='fingerheart'){ const n=g==='bigheart'?14:6; for(let i=0;i<n;i++) setTimeout(()=>spawnFx('♥'),i*120); }
