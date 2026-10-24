@@ -3,16 +3,14 @@ const TJS="https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.1";
 export const MOBILE=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Mac/.test(navigator.userAgent));
 const MODEL=MOBILE?"onnx-community/whisper-tiny":"onnx-community/whisper-base"; // 다국어 (tiny로 바꾸면 더 빠름: onnx-community/whisper-tiny)
 export const LANGS={
-  ko:{label:'한국어',text:'안녕하세요!',tts:'ko-KR'},
-  en:{label:'English',text:'Hello!',tts:'en-US'},
-  zh:{label:'中文(简体)',text:'你好！',tts:'zh-CN'},
-  yue:{label:'粵語(繁體)',text:'你好呀！',tts:'zh-HK'},
-  ja:{label:'日本語',text:'こんにちは！',tts:'ja-JP'},
+  ko:{label:'한국어',text:'안녕하세요!'},
+  en:{label:'English',text:'Hello!'},
+  zh:{label:'中文(简体)',text:'你好！'},
+  yue:{label:'粵語(繁體)',text:'你好呀！'},
+  ja:{label:'日本語',text:'こんにちは！'},
 };
 const CANTO=/[係嘅唔咁佢冇啲喺咩嘢哋囉噉喇咗]/;
 let T,model,proc,tok,ctx,stream,node,src,on=false,busy=false;
-export let muteUntil=0;
-export const setMute=ms=>muteUntil=Date.now()+ms;
 export async function load(status){
   T=await import(TJS);
   const gpu=!!navigator.gpu&&!!(await navigator.gpu.requestAdapter().catch(()=>null));
@@ -54,7 +52,7 @@ export async function start(onUtter,status){
   let buf=[],speaking=false,loud=0,silence=0,noise=0.01;
   node.onaudioprocess=async e=>{
     const d=e.inputBuffer.getChannelData(0); let r=0; for(const v of d)r+=v*v; r=Math.sqrt(r/d.length);
-    if(Date.now()<muteUntil||busy){buf=[];speaking=false;return;}
+    if(busy){buf=[];speaking=false;return;}
     if(!speaking){ noise=noise*0.98+r*0.02; buf=[d.slice()]; // 직전 프레임 보존
       if(r>Math.max(0.02,noise*3)){ if(++loud>=2){speaking=true;silence=0;} } else loud=0; return; }
     buf.push(d.slice());

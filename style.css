@@ -13,7 +13,7 @@ body.greeting #eyeL,body.greeting #eyeR,body.sleeping #eyeL,body.sleeping #eyeR{
 body.greeting #happyL,body.greeting #happyR,body.sleeping #sleepL,body.sleeping #sleepR{opacity:1}
 body.greeting #wave{opacity:1;animation:wave .5s ease-in-out infinite alternate;transform-origin:720px 500px}
 @keyframes wave{from{transform:rotate(-20deg)}to{transform:rotate(20deg)}}
-#bubble{position:fixed;top:6vh;left:50%;transform:translateX(-50%) scale(0);background:#fff;color:#101828;font-size:7vh;font-weight:bold;padding:2vh 5vh;border-radius:5vh;transition:transform .3s cubic-bezier(.3,1.6,.5,1)}
+#bubble{position:fixed;top:6vh;left:50%;transform:translateX(-50%) scale(0);background:#fff;color:#101828;font-size:clamp(32px,10vmin,140px);font-weight:900;line-height:1.2;padding:2.5vmin 6vmin;border-radius:6vmin;max-width:90vw;text-align:center;box-shadow:0 1vmin 4vmin rgba(0,0,0,.4);transition:transform .3s cubic-bezier(.3,1.6,.5,1)}
 body.greeting #bubble{transform:translateX(-50%) scale(1)}
 #zzz{position:fixed;top:15vh;right:18vw;color:#9fb3ff;font-size:8vh;font-weight:bold;opacity:0}
 body.sleeping #zzz{opacity:1}
@@ -38,6 +38,6 @@ html,body{height:100dvh;touch-action:manipulation;-webkit-user-select:none;user-
 }
 @media (orientation:portrait){
   #face{width:100vw}
-  #bubble{font-size:8vw;top:calc(env(safe-area-inset-top) + 8vh)}
+  #bubble{font-size:13vw;top:calc(env(safe-area-inset-top) + 8vh)}
   #zzz{top:22vh;right:10vw;font-size:10vw}
 }
