@@ -7,9 +7,9 @@ let target={x:0,y:0}, look={x:0,y:0}, blinkT=0;
 function setState(s){ if(state===s)return; state=s; body.classList.remove('idle','greeting','happy','sleeping'); body.classList.add(s); status.textContent={idle:'두리번두리번…',greeting:'인사 중!',happy:'함께 있어서 행복해요',sleeping:'쿨쿨 자는 중…'}[s]; }
 function say(t,lang='ko-KR'){ if(!voice||!speechSynthesis)return; const u=new SpeechSynthesisUtterance(t); u.lang=lang; const v=speechSynthesis.getVoices().find(v=>v.lang.replace('_','-')===lang); if(v)u.voice=v; SP.setMute(2500+t.length*300); u.onend=()=>SP.setMute(600); u.pitch=1.5; speechSynthesis.cancel(); speechSynthesis.speak(u); }
 function greetLang(r){ const L=SP.LANGS[r.lang];
-  if(!L){ status.textContent=`감지된 언어: ${r.lang||'?'} (지원 안 함) "${r.text}"`; return; }
+  if(!L){ status.textContent=`감지된 언어: ${r.lang||'?'} (지원 안 함) "${r.text}" [${r.dbg||""}]`; return; }
   $('#bubble').textContent=L.text; greetUntil=Date.now()+GREET_MS; sleepAt=Date.now()+SLEEP_MS; state='';
-  setState('greeting'); status.textContent=`감지된 언어: ${L.label} — "${r.text}"`; say(L.text,L.tts); }
+  setState('greeting'); status.textContent=`감지된 언어: ${L.label} — "${r.text}"  [${r.dbg}]`; say(L.text,L.tts); }
 function greet(wasSleeping){ const msg=wasSleeping?'앗, 깼어요! 안녕하세요!':'안녕하세요!'; $('#bubble').textContent=msg; greetUntil=Date.now()+GREET_MS; setState('greeting'); say(msg); }
 function onFace(x,y){ const now=Date.now(); if(!faceVisible){ faceVisible=true; greet(state==='sleeping'); } lastSeen=now; target={x:Math.max(-1,Math.min(1,-(x*2-1)*1.6)),y:Math.max(-1,Math.min(1,(y*2-1)*1.8))}; } // 카메라 원본은 좌우반전 → 사람이 자기 왼쪽으로 가면 캐릭터도 화면 왼쪽(사람 쪽)을 봄
 function tick(){ const now=Date.now();

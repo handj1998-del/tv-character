@@ -10,11 +10,11 @@ export const LANGS={
   ja:{label:'日本語',text:'こんにちは！',tts:'ja-JP'},
 };
 const CANTO=/[係嘅唔咁佢冇啲喺咩嘢哋囉噉喇咗]/;
-let model,proc,tok,ctx,stream,node,src,on=false,busy=false;
+let T,model,proc,tok,ctx,stream,node,src,on=false,busy=false;
 export let muteUntil=0;
 export const setMute=ms=>muteUntil=Date.now()+ms;
 export async function load(status){
-  const T=await import(TJS);
+  T=await import(TJS);
   const gpu=!!navigator.gpu&&!!(await navigator.gpu.requestAdapter().catch(()=>null));
   status(`음성 모델 다운로드 중… (${gpu?'WebGPU':'WASM'})`);
   const cb=p=>{ if(p.status==='progress'&&p.file?.endsWith('.onnx')) status(`음성 모델 ${p.file.split('/').pop()} ${Math.round(p.progress)}%`); };
@@ -22,16 +22,29 @@ export async function load(status){
   tok=await T.AutoTokenizer.from_pretrained(MODEL);
   model=await T.WhisperForConditionalGeneration.from_pretrained(MODEL,{
     device:gpu?'webgpu':'wasm',
-    dtype:gpu?{encoder_model:'fp32',decoder_model_merged:'q4'}:'q8',progress_callback:cb});
+    dtype:{encoder_model:'fp32',decoder_model_merged:'q4'},progress_callback:cb});
 }
+const CAND=['ko','en','zh','ja'];
+function scriptLang(t){ if(/[\uAC00-\uD7A3]/.test(t))return 'ko'; if(/[\u3040-\u30FF]/.test(t))return 'ja'; if(/[\u4E00-\u9FFF]/.test(t))return 'zh'; if(/[A-Za-z]{2}/.test(t))return 'en'; return null; }
 async function detect(audio){
   const {input_features}=await proc(audio);
-  const out=await model.generate({inputs:input_features,max_new_tokens:32,task:'transcribe'});
-  const s=tok.batch_decode(out,{skip_special_tokens:false})[0];
-  const m=s.match(/<\|([a-z]{2,3})\|>/); let lang=m?.[1];
-  const text=s.replace(/<\|[^|]*\|>/g,'').trim();
+  // 1) 언어 식별: <|startoftranscript|> 다음 토큰의 로짓을 후보 언어 토큰끼리만 비교
+  //   (transformers.js는 language 미지정 시 영어로 강제하므로 generate에 맡기면 안 됨)
+  const t2i=tok.model.tokens_to_ids, sot=t2i.get('<|startoftranscript|>');
+  const out=await model({input_features,decoder_input_ids:new T.Tensor('int64',BigInt64Array.from([BigInt(sot)]),[1,1])});
+  const L=out.logits.data, V=out.logits.dims.at(-1), base=L.length-V;
+  const lg=CAND.map(c=>L[base+t2i.get(`<|${c}|>`)]); const mx=Math.max(...lg);
+  const e=lg.map(x=>Math.exp(x-mx)), sum=e.reduce((p,q)=>p+q);
+  const probs=Object.fromEntries(CAND.map((c,i)=>[c,e[i]/sum]));
+  let lang=CAND[lg.indexOf(mx)];
+  // 2) 감지 언어로 전사
+  const ids=await model.generate({inputs:input_features,language:lang,task:'transcribe',max_new_tokens:40});
+  const text=tok.batch_decode(ids,{skip_special_tokens:true})[0].trim();
+  // 3) 보정: 확신이 낮으면 전사 문자 종류로 판단
+  const sl=scriptLang(text); if(probs[lang]<0.6&&sl&&sl!==lang) lang=sl;
   if(lang==='zh'&&CANTO.test(text)) lang='yue';
-  return {lang,text};
+  const dbg=Object.entries(probs).sort((a,b)=>b[1]-a[1]).map(([c,p])=>`${c} ${Math.round(p*100)}%`).join(' · ');
+  return {lang,text,dbg};
 }
 export async function start(onUtter,status){
   stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
