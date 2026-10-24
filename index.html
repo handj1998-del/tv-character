@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#101828">
+<title>TV 캐릭터 친구</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<div id="stage">
+  <svg id="face" viewBox="0 0 800 600">
+    <ellipse id="cheekL" cx="200" cy="380" rx="50" ry="28" fill="#ff8fab" opacity="0"/>
+    <ellipse id="cheekR" cx="600" cy="380" rx="50" ry="28" fill="#ff8fab" opacity="0"/>
+    <g id="eyes">
+      <g id="eyeL" transform="translate(270,270)"><ellipse class="eye" rx="70" ry="90"/><circle class="pupil" r="26" cx="0" cy="0"/><circle class="shine" r="10" cx="-18" cy="-24"/></g>
+      <g id="eyeR" transform="translate(530,270)"><ellipse class="eye" rx="70" ry="90"/><circle class="pupil" r="26" cx="0" cy="0"/><circle class="shine" r="10" cx="-18" cy="-24"/></g>
+      <path id="happyL" class="arc" d="M200 290 Q270 200 340 290"/>
+      <path id="happyR" class="arc" d="M460 290 Q530 200 600 290"/>
+      <path id="sleepL" class="arc" d="M200 270 Q270 320 340 270"/>
+      <path id="sleepR" class="arc" d="M460 270 Q530 320 600 270"/>
+    </g>
+    <path id="mouth" class="arc" d="M360 430 Q400 450 440 430"/>
+    <text id="wave" x="660" y="520" font-size="120">👋</text>
+  </svg>
+  <div id="bubble">안녕하세요!</div>
+  <div id="zzz"><span>Z</span><span>z</span><span>z</span></div>
+</div>
+<div id="tap">👆 화면을 눌러 시작하기<small>카메라·마이크·소리를 켜려면 터치가 필요해요</small></div>
+<div id="ui">
+  <button id="btnFs">⛶ 전체화면</button>
+  <button id="btnCam">📷 카메라 보기</button>
+  <button id="btnVoice">🔊 음성 켜짐</button>
+  <button id="btnMic">🎤 마이크 꺼짐</button>
+  <span id="status">카메라 준비 중…</span>
+</div>
+<video id="video" autoplay muted playsinline></video>
+<script type="module" src="app.js"></script>
+</body></html>
