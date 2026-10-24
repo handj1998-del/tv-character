@@ -3,12 +3,15 @@ import * as SP from "./speech.js";
 import * as DLG from "./dialogue.js";
 import * as GS from "./gestures.js";
 import { GROK_ENDPOINT, GROK_TIMEOUT_MS, SCENE_ENABLED, SCENE_MIN_GAP_MS } from "./config.js";
+import { LIVE } from "./config.js";
+import { createCrowd, greetPhrase, byePhrase, filterBackground, attention } from "./crowd.js";
+import { createWaker, diffFrame, wakeMsg, goneMsg, WAKE } from "./wake.js";
 import { grokCtx, wantsScene, pushHist } from "./grokctx.js";
 const $=s=>document.querySelector(s), body=document.body, video=$('#video'), status=$('#status');
-const Q=new URLSearchParams(location.search), DEMO=Q.get('state');
+const Q=new URLSearchParams(location.search), MOTION_DEMO=Q.get('motion')==='1', DEMO=MOTION_DEMO?null:Q.get('state'); var DEMO_LOCK=false;
 const HR=Q.get('time')==='night'?23:Q.get('time')==='morning'?8:new Date().getHours();
 const NIGHT=HR>=22||HR<6, MORNING=HR>=6&&HR<10;
-const SLEEP_MS=NIGHT?15000:30000, GREET_MS=4500, LOST_MS=1500;
+const SLEEP_MS=+(Q.get('sleepms')||(NIGHT?LIVE.SLEEP_AFTER_MS/2:LIVE.SLEEP_AFTER_MS)), GREET_MS=4500, LOST_MS=1500;
 const EMO={sad:3,angry:2.5,shy:2.5,sleepy:3,excited:2.5,curious:2.5,wink:1.2,laugh:2.5,eyeroll:1.6,hearteyes:3,stareyes:2.5,dizzy:2.5,startled:1.5};
 const ALL=['idle','surprised','greeting','happy','yawning','sleeping','waking',...Object.keys(EMO)];
 let state='', stT=0, lastSeen=0, faceVisible=false, faceSince=0, sleepAt=Date.now()+SLEEP_MS, pendingMsg='', queued='';
@@ -46,7 +49,7 @@ async function askGrok(text,lang,opt={}){ if(!GROK) return null; const ac=new Ab
   const now=Date.now(); let image=null;
   if(SCENE&&(opt.scene||wantsScene(text))&&(now-sceneAt>SCENE_MIN_GAP_MS||(!opt.scene&&wantsScene(text)))){ image=snap(); if(image){ sceneAt=now; sceneFlash(); } }
   if(opt.scene&&!image) return null;
-  const ctx=grokCtx({people:tracks.length,hour:HR,gesture:now-lastGestT<30000?lastGest:'',state,lang});
+  const ctx=grokCtx({people:tracks.length,hour:HR,gesture:now-lastGestT<30000?lastGest:'',state:now-wokeAt<WAKE.noFaceMs?'woke_by_motion':state,lang});
   try{ const r=await fetch(GROK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid:SID,lang,text,name:DLG.state.name||'',history:HIST.slice(-12),ctx,image,scene:opt.scene||undefined}),signal:ac.signal});
     if(!r.ok) throw new Error('HTTP '+r.status); const j=await r.json(); if(!j.text) throw new Error('empty');
     const out={text:String(j.text).slice(0,120),expr:EXPR.includes(j.expression)?j.expression:'happy',intent:image?'grok+scene':'grok'};
@@ -63,16 +66,23 @@ async function greetLang(r){ const L=SP.LANGS[r.lang];
 function onFaces(list){ const now=Date.now(); if(!list.length)return;
   if(!faceVisible){ faceVisible=true; faceSince=now;
     if(state==='sleeping'||state==='yawning'){ pendingMsg='앗, 깼어요! 안녕하세요!'; setState('waking'); }
-    else if(list[0].w>.5){ pendingMsg=SP.LANGS[curLang].text; setState('startled'); queued='greet'; }
-    else { pendingMsg=SP.LANGS[curLang].text; setState('surprised'); } }
-  lastSeen=now; trackFaces(list,now);
+    else if(list[0].w>.5&&canBubble(now)){ pendingMsg=greetPhrase(curLang||'ko',HR); setState('startled'); queued='greet'; }
+    else if(state==='idle'){ state=''; setState('happy'); } } // 지나가는 사람: 눈길+미소만, 인사는 crowd가 결정
+  lastSeen=now; trackFaces(list,now); crowdStep(now);
   if(list[0].w>.42&&now>shyCD&&(state==='happy'||state==='idle')){ shyCD=now+8000; emote('shy'); }
   if(state==='happy'&&now-faceSince>8000&&now>stareCD){ stareCD=now+20000; emote('wink','hearteyes'); } }
 // ── 시선 추적: 얼굴 여러 명 둘러보기 + 움직임 추적
 // 카메라 영상은 거울상이 아니므로 x를 뒤집음: 화면 앞 시청자 기준 왼쪽 사람 → 눈동자 화면 왼쪽
 const toGaze=(x,y)=>({x:Math.max(-1,Math.min(1,-(x*2-1)*1.5)),y:Math.max(-1,Math.min(1,(y*2-1)*1.6))});
 let tracks=[], nextId=1, curId=0, switchT=0, sacUntil=0, trackSrc='', motion=null, motionT=0;
-function trackFaces(list,now){ const nt=[];
+const CR=createCrowd(LIVE); var bubbleT=0, crowdT=0, engageT=Date.now(); window.__crowd=CR;
+function canBubble(now){ return now-bubbleT>=LIVE.BUBBLE_GAP_MS&&now-lastTalk>=LIVE.BUBBLE_GAP_MS; }
+function crowdStep(now){ if(now-crowdT<150) return; crowdT=now; const ev=CR.update(now,faceVisible?tracks:[]);
+  if(['sleeping','yawning','waking'].includes(state)) return;
+  for(const t of ev.glance){ if(!ev.greet&&t.id!==curId){ target=toGaze(t.x,t.y); sacUntil=now+150; switchT=now+700; } }
+  if(ev.greet&&canBubble(now)){ bubbleT=now; engageT=now; curId=ev.greet.id; target=toGaze(ev.greet.x,ev.greet.y); pendingMsg=greetPhrase(curLang||'ko',HR); state=''; setState('surprised'); }
+  else if(ev.left&&canBubble(now)){ bubbleT=now; say(byePhrase(curLang||'ko'),'wink'); } }
+function trackFaces(list,now){ list=filterBackground(list,LIVE); const nt=[];
   for(const f of list){ let best=null,bd=.18; for(const t of tracks){ const d=Math.hypot(t.x-f.x,t.y-f.y); if(d<bd&&!nt.includes(t)){bd=d;best=t;} }
     if(best){ best.moved=Math.max(best.moved*.9,Math.hypot(best.x-f.x,best.y-f.y)*10); Object.assign(best,f); nt.push(best); }
     else nt.push({...f,id:nextId++,born:now,moved:1}); }
@@ -80,23 +90,32 @@ function trackFaces(list,now){ const nt=[];
   if(!cur||(tracks.length>1&&now>switchT)){
     let pick=tracks[0];
     if(tracks.length>1){ const others=tracks.filter(t=>t!==cur), nearest=tracks.reduce((a,b)=>b.w>a.w?b:a);
-      if(cur!==nearest&&Math.random()<.3) pick=nearest;
+      const best=attention(tracks); if(cur!==best&&Math.random()<.6) pick=best;
       else { const w=others.map(t=>1+(now-t.born<3000?4:0)+Math.min(3,t.moved*3)); let r=Math.random()*w.reduce((a,b)=>a+b,0); pick=others.find((t,i)=>(r-=w[i])<0)||others[0]; } }
     if(cur&&pick!==cur) sacUntil=now+120;
     curId=pick.id; cur=pick; switchT=now+1500+Math.random()*2500; }
   faceIdx=tracks.indexOf(cur); trackSrc='face'; target=toGaze(cur.x,cur.y); }
 const mc=document.createElement('canvas'); mc.width=64; mc.height=48; const mx=mc.getContext('2d',{willReadFrequently:true}); let prevF=null;
-function motionStep(){ if(video.readyState<2)return; mx.drawImage(video,0,0,64,48); const d=mx.getImageData(0,0,64,48).data, g=new Float32Array(64*48);
+const WK=createWaker(); var wokeAt=0, wokeGoneSaid=true, motSkip=0; window.__wake=WK;
+function isDrowsy(now){ return !faceVisible&&state==='idle'&&now>sleepAt-LIVE.DROWSY_MS; }
+function wakeByMotion(now){ wokeAt=now; wokeGoneSaid=false; if(motion) target=toGaze(motion.x,motion.y); trackSrc='motion'; motionT=now;
+  pendingMsg=wakeMsg(curLang||'ko',HR); sleepAt=now+SLEEP_MS; setState('waking'); }
+function motionStep(){ if(video.readyState<2)return; const now=Date.now(), asleep=state==='sleeping'||state==='yawning';
+  if(asleep&&(motSkip++%3))return; // 자는 동안 약 5fps로 절전
+  mx.drawImage(video,0,0,64,48); const d=mx.getImageData(0,0,64,48).data, g=new Float32Array(64*48);
   let lsum=0; for(let i=0;i<g.length;i++){ g[i]=d[i*4]*.3+d[i*4+1]*.59+d[i*4+2]*.11; lsum+=g[i]; } lumaAvg=lumaAvg*.8+lsum/g.length*.2;
-  if(prevF){ let n=0,sx=0,sy=0; for(let i=0;i<g.length;i++) if(Math.abs(g[i]-prevF[i])>22){ n++; sx+=i%64; sy+=(i/64|0); }
-    if(n>12&&n<g.length*.6){ const now=Date.now(); const m={x:(sx/n+.5)/64,y:(sy/n+.5)/48,n};
+  if(prevF){ const r=diffFrame(g,prevF), n=r.n;
+    if(!asleep&&isDrowsy(now)&&r.frac>=WAKE.areaMin){ sleepAt=now+SLEEP_MS; target=toGaze(r.x,r.y); trackSrc='motion'; motionT=now; blinks=[now,now+240]; }
+    if(WK.step(now,r.frac,asleep&&!DEMO_LOCK)&&!faceVisible){ motion={x:r.x,y:r.y,n}; wakeByMotion(now); }
+    if(n>12&&n<g.length*.6){ const m={x:r.x,y:r.y,n};
       motion=motion&&now-motionT<500?{x:motion.x*.5+m.x*.5,y:motion.y*.5+m.y*.5,n}:m; motionT=now;
-      if(!faceVisible){ trackSrc='motion'; target=toGaze(motion.x,motion.y); sleepAt=Math.max(sleepAt,now+8000); } } }
+      if(!faceVisible&&!asleep){ trackSrc='motion'; target=toGaze(motion.x,motion.y); sleepAt=Math.max(sleepAt,now+8000); } } }
   prevF=g; }
 const DBG=Q.get('debug')==='1'; let dbg=null;
 if(DBG){ dbg=document.createElement('canvas'); dbg.width=360; dbg.height=240; dbg.style.cssText='position:fixed;left:8px;top:8px;z-index:99;border:2px solid #000;background:#000;width:360px;height:240px'; document.body.appendChild(dbg); }
 function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=360,H=240; c.save(); c.translate(W,0); c.scale(-1,1); if(video.readyState>=2) c.drawImage(video,0,0,W,H); c.restore();
   const X=x=>(1-x)*W; c.lineWidth=2; c.font='12px sans-serif';
+  c.fillStyle='#000a'; c.fillRect(0,H-18,W,18); c.fillStyle=WK.level>=WAKE.areaMin?'#f0f':'#0f0'; c.fillRect(0,H-18,Math.min(W,WK.level/WAKE.areaMax*W),6); c.fillStyle='#fff'; c.fillText(`motion ${(WK.level*100).toFixed(1)}% (wake≥${WAKE.areaMin*100}% ${WAKE.holdMs}ms)`,4,H-4);
   for(const t of tracks){ const on=t.id===curId&&trackSrc==='face'&&faceVisible; c.strokeStyle=on?'#0f0':'#fff'; const w=t.w*W, h=w*(4/3)*(W/H)*.75; c.strokeRect(X(t.x)-w/2,t.y*H-h/2,w,h); c.fillStyle=c.strokeStyle; c.fillText((on?'▶ ':'')+'#'+t.id,X(t.x)-w/2,t.y*H-h/2-3); }
   if(motion&&Date.now()-motionT<600){ c.fillStyle='#f0f'; c.beginPath(); c.arc(X(motion.x),motion.y*H,5,0,7); c.fill(); }
   c.strokeStyle='#ff0'; c.beginPath(); c.arc(W/2+look.x/1.5*W/2,H/2+look.y/1.6*H/2,7,0,7); c.stroke();
@@ -124,6 +143,9 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(DEMO){ if(state!==DEMO){ if(DEMO==='greeting')setBubble('안녕하세요!'); setState(DEMO);} }
   else {
   if(faceVisible && now-lastSeen>LOST_MS){ faceVisible=false; faces=[]; tracks=[]; curId=0; sleepAt=now+SLEEP_MS; target={x:0,y:0}; }
+  crowdStep(now); if(faceVisible) engageT=Math.max(engageT,now-LIVE.BORED_MS+5000);
+  if(!wokeGoneSaid&&faceVisible) wokeGoneSaid=true;
+  if(!wokeGoneSaid&&now-wokeAt>WAKE.noFaceMs&&!['waking'].includes(state)){ wokeGoneSaid=true; say(goneMsg(curLang||'ko'),'curious'); sleepAt=now+SLEEP_MS; }
   if(state==='surprised'&&st>0.7) showBubble(pendingMsg);
   else if(state==='waking'&&st>1.4) showBubble(pendingMsg);
   else if(state==='greeting'&&st>GREET_MS/1000) setState(faceVisible?'happy':'idle');
@@ -132,6 +154,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   else if(['idle','happy',''].includes(state)){
     if(faceVisible) setState('happy'); else if(now>sleepAt) setState('yawning'); else setState('idle');
     if(faceVisible&&askAt&&now>askAt&&!SP.busy?.()&&!['sleeping','yawning'].includes(state)){ askAt=now+25000; const q=DLG.ask(curLang); say(q.text,'curious'); }
+    if(now>randT&&!faceVisible&&now-engageT>LIVE.BORED_MS&&Math.random()<.4){ randT=now+9000+Math.random()*9000; for(let i=0;i<3;i++) setTimeout(()=>spawnFx('♪'),i*400); }
     if(now>randT){ randT=now+8000+Math.random()*9000;
       const pool=faceVisible?['wink','hearteyes','stareyes','shy','excited','curious']:NIGHT?['sleepy','sleepy','curious','eyeroll']:MORNING?['excited','curious','stareyes','wink']:['curious','eyeroll','sad','angry','dizzy','excited','sleepy'];
       emote(pool[Math.floor(Math.random()*pool.length)]); } }
@@ -169,6 +192,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(S==='yawning'){ open=Math.max(.08,1-ease(st/1.2)*.85); if(st>1.8) mode='closed'; }
   if(S==='waking'){ open=st<.5?.15:(st<.7?1:(st<.85?.1:1)); }
   if(S==='sleepy'||(S==='idle'&&NIGHT)) open=Math.min(open,.45+Math.sin(t*.9)*.08);
+  if(S==='idle'&&isDrowsy(now)) open=Math.min(open,.35+Math.sin(t*.7)*.1);
   if(S==='sad') open=Math.min(open,.8); if(S==='angry') open=Math.min(open,.6);
   if(S==='shy'||S==='laugh') mode='happy'; if(S==='excited'){ eyeScale=1.1; pupilS=1.15; }
   if(S==='wink') modes=['open','happy']; if(S==='hearteyes') mode='heart'; if(S==='stareyes') mode='star'; if(S==='dizzy') mode='spiral';
@@ -207,7 +231,8 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(joy&&now>fxT){ fxT=now+(S==='greeting'||S==='excited'?350:900); spawnFx(S==='hearteyes'?'♥':S==='stareyes'?'✦':S==='laugh'?(curLang==='ko'?'ㅎ':curLang==='ja'?'笑':'ha'):''); }
   drawDebug(); window.__gaze={tx:target.x,ty:target.y,gx,gy,src:trackSrc,cur:curId,n:tracks.length,faceIdx};
   requestAnimationFrame(tick); }
-setState(DEMO||'idle'); requestAnimationFrame(tick);
+setState(DEMO||(MOTION_DEMO?'sleeping':'idle')); requestAnimationFrame(tick);
+if(MOTION_DEMO){ sleepAt=Date.now()+1e9; setTimeout(()=>{ motion={x:.25,y:.5,n:200}; wakeByMotion(Date.now()); },1500); }
 $('#btnFs').onclick=()=>{ const d=document,el=d.documentElement; if(d.fullscreenElement||d.webkitFullscreenElement){(d.exitFullscreen||d.webkitExitFullscreen).call(d);return;} const f=el.requestFullscreen||el.webkitRequestFullscreen; if(f)f.call(el); else status.textContent='iPhone은 공유 → 홈 화면에 추가로 전체화면 사용'; };
 $('#btnCam').onclick=()=>body.classList.toggle('showcam');
 document.addEventListener('keydown',e=>{ if(e.key==='f')$('#btnFs').click(); if(e.key==='c')$('#btnCam').click(); });
@@ -286,7 +311,7 @@ document.addEventListener('keydown',e=>{ if(e.key==='m'||e.key==='M')toggleMic()
 $('#tap').onclick=async()=>{ $('#tap').remove();
   try{ await video.play(); }catch{}
   await window.startCam(); video.play().catch(()=>{}); };
-if(DEMO||Q.get('say')||Q.get('gesture')) $('#tap').remove();
+if(DEMO||MOTION_DEMO||Q.get('say')||Q.get('gesture')) $('#tap').remove();
 // 데모: ?say=문장&lang=ko|en|zh|yue|ja → 대화 엔진 테스트
 if(Q.get('say')) setTimeout(()=>greetLang({lang:Q.get('lang')||'ko',text:Q.get('say'),dbg:'demo'}),300);
 // ?autocam=1 → 탭 없이 카메라 시작(키오스크/테스트), ?debug=1 → 미리보기+시선 표시

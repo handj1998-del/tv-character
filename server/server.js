@@ -40,7 +40,7 @@ export function situation(c){ if(!c||typeof c!=='object') return ''; const p=[];
   if(Number.isFinite(+c.people)) p.push(`people visible: ${Math.max(0,Math.min(20,+c.people|0))}`);
   if(TOD[c.time]) p.push(`time: ${TOD[c.time]}`);
   if(c.gesture&&/^[a-z]{2,20}$/.test(c.gesture)) p.push(`recent gesture: ${c.gesture}`);
-  if(c.state&&/^[a-z]{2,20}$/.test(c.state)) p.push(`your current state: ${c.state}`);
+  if(c.state&&/^[a-z_]{2,20}$/.test(c.state)) p.push(`your current state: ${c.state}`);
   if(LANGNAME[c.lang]) p.push(`detected language: ${c.lang}`);
   return p.length?`\nSituation: ${p.join(', ')}.`:''; }
 export function parseReply(out){ let p; try{ p=JSON.parse(String(out).replace(/^```(json)?|```$/g,'').trim()); }catch{ p={text:out,expression:'happy'}; }
