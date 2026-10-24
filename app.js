@@ -3,10 +3,12 @@ import * as SP from "./speech.js";
 import * as DLG from "./dialogue.js";
 import * as GS from "./gestures.js";
 import { GROK_ENDPOINT, GROK_TIMEOUT_MS, SCENE_ENABLED, SCENE_MIN_GAP_MS } from "./config.js";
-import { LIVE } from "./config.js";
+import { LIVE, CHAR_PIN } from "./config.js";
+import { CHARS, pickChar, charGreet } from "./chars.js";
 import { createCrowd, greetPhrase, byePhrase, filterBackground, attention } from "./crowd.js";
 import { createWaker, diffFrame, wakeMsg, goneMsg, WAKE } from "./wake.js";
 import { grokCtx, wantsScene, pushHist } from "./grokctx.js";
+var FACE_K=1.3; // Sphere-style cue: face fills the display, readable from far away
 const $=s=>document.querySelector(s), body=document.body, video=$('#video'), status=$('#status');
 const Q=new URLSearchParams(location.search), MOTION_DEMO=Q.get('motion')==='1', DEMO=MOTION_DEMO?null:Q.get('state'); var DEMO_LOCK=false;
 const HR=Q.get('time')==='night'?23:Q.get('time')==='morning'?8:new Date().getHours();
@@ -50,7 +52,7 @@ async function askGrok(text,lang,opt={}){ if(!GROK) return null; const ac=new Ab
   if(SCENE&&(opt.scene||wantsScene(text))&&(now-sceneAt>SCENE_MIN_GAP_MS||(!opt.scene&&wantsScene(text)))){ image=snap(); if(image){ sceneAt=now; sceneFlash(); } }
   if(opt.scene&&!image) return null;
   const ctx=grokCtx({people:tracks.length,hour:HR,gesture:now-lastGestT<30000?lastGest:'',state:now-wokeAt<WAKE.noFaceMs?'woke_by_motion':state,lang});
-  try{ const r=await fetch(GROK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid:SID,lang,text,name:DLG.state.name||'',history:HIST.slice(-12),ctx,image,scene:opt.scene||undefined}),signal:ac.signal});
+  try{ const r=await fetch(GROK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid:SID,lang,text,name:DLG.state.name||'',history:HIST.slice(-12),ctx,char:C.id,image,scene:opt.scene||undefined}),signal:ac.signal});
     if(!r.ok) throw new Error('HTTP '+r.status); const j=await r.json(); if(!j.text) throw new Error('empty');
     const out={text:String(j.text).slice(0,120),expr:EXPR.includes(j.expression)?j.expression:'happy',intent:image?'grok+scene':'grok'};
     pushHist(HIST,text||'(saw person)',out.text); return out; }
@@ -66,7 +68,7 @@ async function greetLang(r){ const L=SP.LANGS[r.lang];
 function onFaces(list){ const now=Date.now(); if(!list.length)return;
   if(!faceVisible){ faceVisible=true; faceSince=now;
     if(state==='sleeping'||state==='yawning'){ pendingMsg='앗, 깼어요! 안녕하세요!'; setState('waking'); }
-    else if(list[0].w>.5&&canBubble(now)){ pendingMsg=greetPhrase(curLang||'ko',HR); setState('startled'); queued='greet'; }
+    else if(list[0].w>.5&&canBubble(now)){ pendingMsg=(Math.random()<.5?charGreet(C,curLang||'ko'):greetPhrase(curLang||'ko',HR)); setState('startled'); queued='greet'; }
     else if(state==='idle'){ state=''; setState('happy'); } } // 지나가는 사람: 눈길+미소만, 인사는 crowd가 결정
   lastSeen=now; trackFaces(list,now); crowdStep(now);
   if(list[0].w>.42&&now>shyCD&&(state==='happy'||state==='idle')){ shyCD=now+8000; emote('shy'); }
@@ -80,7 +82,7 @@ function canBubble(now){ return now-bubbleT>=LIVE.BUBBLE_GAP_MS&&now-lastTalk>=L
 function crowdStep(now){ if(now-crowdT<150) return; crowdT=now; const ev=CR.update(now,faceVisible?tracks:[]);
   if(['sleeping','yawning','waking'].includes(state)) return;
   for(const t of ev.glance){ if(!ev.greet&&t.id!==curId){ target=toGaze(t.x,t.y); sacUntil=now+150; switchT=now+700; } }
-  if(ev.greet&&canBubble(now)){ bubbleT=now; engageT=now; curId=ev.greet.id; target=toGaze(ev.greet.x,ev.greet.y); pendingMsg=greetPhrase(curLang||'ko',HR); state=''; setState('surprised'); }
+  if(ev.greet&&canBubble(now)){ bubbleT=now; engageT=now; curId=ev.greet.id; target=toGaze(ev.greet.x,ev.greet.y); pendingMsg=(Math.random()<.5?charGreet(C,curLang||'ko'):greetPhrase(curLang||'ko',HR)); state=''; setState('surprised'); }
   else if(ev.left&&canBubble(now)){ bubbleT=now; say(byePhrase(curLang||'ko'),'wink'); } }
 function trackFaces(list,now){ list=filterBackground(list,LIVE); const nt=[];
   for(const f of list){ let best=null,bd=.18; for(const t of tracks){ const d=Math.hypot(t.x-f.x,t.y-f.y); if(d<bd&&!nt.includes(t)){bd=d;best=t;} }
@@ -111,6 +113,15 @@ function motionStep(){ if(video.readyState<2)return; const now=Date.now(), aslee
       motion=motion&&now-motionT<500?{x:motion.x*.5+m.x*.5,y:motion.y*.5+m.y*.5,n}:m; motionT=now;
       if(!faceVisible&&!asleep){ trackSrc='motion'; target=toGaze(motion.x,motion.y); sleepAt=Math.max(sleepAt,now+8000); } } }
   prevF=g; }
+var C=pickChar(Q.get('char'),CHAR_PIN); window.__char=()=>C;
+function applyChar(c){ C=c; const st=$('#stage'); document.body.style.background=c.bg[1];
+  st.style.background=`radial-gradient(circle at 50% 45%,${c.bg[0]} 0%,${c.bg[1]} 60%,${c.bg[2]} 100%)`;
+  document.querySelectorAll('#face [fill],#face [stroke]').forEach(e=>{ for(const a of ['fill','stroke']){ const v=e.dataset[a]??(e.dataset[a]=e.getAttribute(a)||'');
+    if(v==='#1e120a') e.setAttribute(a,c.ink); else if(v==='#120a05') e.setAttribute(a,c.iris[2]); else if(v==='#ff7a6b') e.setAttribute(a,c.blush); } });
+  document.querySelectorAll('#irisG stop').forEach((s,i)=>s.setAttribute('stop-color',c.iris[i]||c.iris[2]));
+  document.documentElement.style.setProperty('--ink',c.ink); document.title=`${c.name.ko} · TV 캐릭터`; }
+applyChar(C);
+setInterval(()=>{ if(Q.get('char')||CHAR_PIN!=null) return; const n=pickChar(null,null); if(n!==C) applyChar(n); },30000); // 자정에 자동 교체
 const DBG=Q.get('debug')==='1'; let dbg=null;
 if(DBG){ dbg=document.createElement('canvas'); dbg.width=360; dbg.height=240; dbg.style.cssText='position:fixed;left:8px;top:8px;z-index:99;border:2px solid #000;background:#000;width:360px;height:240px'; document.body.appendChild(dbg); }
 function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=360,H=240; c.save(); c.translate(W,0); c.scale(-1,1); if(video.readyState>=2) c.drawImage(video,0,0,W,H); c.restore();
@@ -171,7 +182,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   let ix=0, iy=0; if(S==='eyeroll'){ const a=Math.PI*(1+Math.min(st/1.2,1)); ix=Math.cos(a)*30; iy=-Math.abs(Math.sin(a))*40-(st<1.2?0:30); }
   if(S==='sleepy'||(S==='idle'&&NIGHT)) gy=Math.max(gy,.3);
   // ── 얼굴 그룹
-  const breath=Math.sin(t*(asleep?1.3:2.2)); let sx=1+breath*.012, sy=1-breath*.018, oy=breath*4, ox=0;
+  const breath=Math.sin(t*(asleep?1.3:2.2*C.breath)); let sx=1+breath*.012, sy=1-breath*.018, oy=breath*4, ox=0;
   if(S==='greeting'&&st<1){ const b=Math.sin(st*18)*Math.exp(-st*5)*.12; sx-=b; sy+=b; }
   if(S==='surprised'||S==='startled'){ const j=Math.sin(Math.min(st/.35,1)*Math.PI); oy-=j*30; sy+=j*.06; sx-=j*.04; }
   if(S==='waking'){ const p=Math.sin(Math.min(st/1.2,1)*Math.PI); sy+=p*.14; sx-=p*.08; oy-=p*25; }
@@ -179,11 +190,11 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(S==='excited'){ const b=Math.abs(Math.sin(st*9)); oy-=b*28; sy+=b*.05; sx-=b*.03; }
   if(S==='angry') ox=Math.sin(t*40)*4*(st<1?1:.3);
   if(S==='sad') oy+=15; if(asleep) oy+=25; if(S==='yawning') oy+=ease(st/2.4)*18;
-  let rot=gx*6+(joy?Math.sin(t*3)*2.5:0)+(asleep?-5+Math.sin(t*1.3)*1.5:0)+(S==='yawning'?-ease(st/1.5)*5:0);
+  let rot=(asleep?0:Math.sin(t*.45)*C.tilt)+gx*6+(joy?Math.sin(t*3)*2.5:0)+(asleep?-5+Math.sin(t*1.3)*1.5:0)+(S==='yawning'?-ease(st/1.5)*5:0);
   if(S==='curious') rot+=14*ease(st/.4); if(S==='dizzy') rot+=Math.sin(t*5)*8; if(S==='shy') rot-=6;
-  $('#root').setAttribute('transform',`translate(${400+gx*45+ox} ${250+gy*30+oy}) rotate(${rot}) scale(${sx} ${sy}) translate(-400 -250)`);
+  $('#root').setAttribute('transform',`translate(${400+gx*70+ox} ${250+gy*40+oy}) rotate(${rot}) scale(${sx*FACE_K} ${sy*FACE_K}) translate(-400 -250)`);
   // ── 깜빡임
-  if(now>blinkT){ blinks=[now]; if(Math.random()<.25) blinks.push(now+260); blinkT=now+1800+Math.random()*4200; }
+  if(now>blinkT){ blinks=[now]; if(Math.random()<.25) blinks.push(now+260); blinkT=now+(1800+Math.random()*4200)*C.blink; }
   let open=1; for(const b of blinks){ const d=(now-b)/1000; if(d>=0&&d<.16) open=Math.min(open,Math.abs(d-.08)/.08); }
   let mode='open', eyeScale=1, pupilS=1, modes=null, scales=null;
   if(asleep) mode='closed'; else if(S==='happy') mode=Math.sin(t*.8)>.3?'open':'happy';
@@ -198,13 +209,13 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(S==='wink') modes=['open','happy']; if(S==='hearteyes') mode='heart'; if(S==='stareyes') mode='star'; if(S==='dizzy') mode='spiral';
   if(S==='curious') scales=[1.12,.9];
   eyes.forEach(([e,cx],i)=>{ const md=modes?modes[i]:mode, sc=scales?scales[i]:eyeScale*(md==='heart'?1+Math.abs(Math.sin(t*6))*.08:1);
-    e.g.setAttribute('transform',`translate(${cx+gx*10} ${220+gy*8}) scale(${sc})`);
+    e.g.setAttribute('transform',`translate(${cx+(i?1:-1)*C.eye.gap+gx*10} ${220+gy*8}) scale(${sc*C.eye.sx} ${sc*C.eye.sy})`);
     e.open.setAttribute('transform',`scale(1 ${md==='open'?Math.max(.05,open):.05})`); e.open.style.opacity=md==='open'?1:0;
     e.happy.style.opacity=md==='happy'?1:0; e.closed.style.opacity=md==='closed'?1:0; e.heart.style.opacity=md==='heart'?1:0;
     e.star.style.opacity=md==='star'?1:0; e.spiral.style.opacity=md==='spiral'?1:0;
     if(md==='star') e.star.setAttribute('transform',`rotate(${Math.sin(t*4)*12}) scale(${1+Math.sin(t*8)*.06})`);
     if(md==='spiral') e.spiral.setAttribute('transform',`rotate(${t*400*(i?1:-1)})`);
-    e.iris.setAttribute('transform',`translate(${gx*34+ix} ${gy*28+iy})`); e.pupil.setAttribute('transform',`translate(0 10) scale(${pupilS}) translate(0 -10)`); });
+    e.iris.setAttribute('transform',`translate(${gx*40+ix} ${gy*32+iy})`); e.pupil.setAttribute('transform',`translate(0 10) scale(${pupilS}) translate(0 -10)`); });
   // ── 눈썹/땀/눈물
   const bL=$('#browL'), bR=$('#browR');
   if(S==='angry'){ bL.setAttribute('d','M185 70 L320 115'); bR.setAttribute('d','M615 70 L480 115'); }
@@ -215,18 +226,18 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   const te=$('#tear'); te.style.opacity=S==='sad'&&st>.6?1:0; te.setAttribute('transform',`translate(0 ${((st-.6)*60)%90})`);
   // ── 입
   const m=$('#mouth'); let d,fill='none';
-  if(S==='surprised'){ d='M400 345 a22 28 0 1 0 0.1 0Z'; fill='#1e120a'; }
-  else if(S==='yawning'){ const r=ease(st/0.8)*(st<1.9?1:Math.max(0,1-(st-1.9)*2)); d=`M400 ${355-r*25} a${14+r*30} ${6+r*45} 0 1 0 0.1 0Z`; fill='#1e120a'; }
-  else if(S==='greeting'){ const o=st<1.6?(Math.abs(Math.sin(st*11))*25+12):22; d=`M340 360 Q400 ${375+o*2.4} 460 360 Z`; fill='#c2302a'; }
-  else if(S==='happy'||S==='hearteyes'||S==='stareyes'){ d='M350 360 Q400 420 450 360 Z'; fill='#c2302a'; }
-  else if(S==='laugh'){ const o=Math.abs(Math.sin(st*14))*30+40; d=`M330 350 Q400 ${355+o*2.3} 470 350 Z`; fill='#c2302a'; }
-  else if(S==='excited'){ const o=Math.abs(Math.sin(st*9))*20+30; d=`M335 355 Q400 ${360+o*2.2} 465 355 Z`; fill='#c2302a'; }
-  else if(MOUTH[S]){ d=MOUTH[S]; if(S==='curious'||S==='startled') fill='#1e120a'; }
+  if(S==='surprised'){ d='M400 345 a22 28 0 1 0 0.1 0Z'; fill=C.ink; }
+  else if(S==='yawning'){ const r=ease(st/0.8)*(st<1.9?1:Math.max(0,1-(st-1.9)*2)); d=`M400 ${355-r*25} a${14+r*30} ${6+r*45} 0 1 0 0.1 0Z`; fill=C.ink; }
+  else if(S==='greeting'){ const o=st<1.6?(Math.abs(Math.sin(st*11))*25+12):22; d=`M340 360 Q400 ${375+o*2.4} 460 360 Z`; fill=C.mouth; }
+  else if(S==='happy'||S==='hearteyes'||S==='stareyes'){ d='M350 360 Q400 420 450 360 Z'; fill=C.mouth; }
+  else if(S==='laugh'){ const o=Math.abs(Math.sin(st*14))*30+40; d=`M330 350 Q400 ${355+o*2.3} 470 350 Z`; fill=C.mouth; }
+  else if(S==='excited'){ const o=Math.abs(Math.sin(st*9))*20+30; d=`M335 355 Q400 ${360+o*2.2} 465 355 Z`; fill=C.mouth; }
+  else if(MOUTH[S]){ d=MOUTH[S]; if(S==='curious'||S==='startled') fill=C.ink; }
   else if(asleep){ d='M385 380 Q400 388 415 380'; }
   else if(S==='waking'){ d='M375 375 Q400 390 425 375'; }
   else if(MORNING) d='M355 365 Q400 405 445 365'; else d='M365 368 Q400 395 435 368';
   m.setAttribute('d',d); m.setAttribute('fill',fill);
-  $('#blush').setAttribute('opacity',S==='shy'?1:joy?.75:(asleep?.3:.45));
+  $('#blush').setAttribute('opacity',Math.min(1,(S==='shy'?1:joy?.75:(asleep?.3:.45))+(C.blushBoost||0)));
   $('#bang').style.opacity=S==='surprised'||S==='startled'?1:0;
   if(joy&&now>fxT){ fxT=now+(S==='greeting'||S==='excited'?350:900); spawnFx(S==='hearteyes'?'♥':S==='stareyes'?'✦':S==='laugh'?(curLang==='ko'?'ㅎ':curLang==='ja'?'笑':'ha'):''); }
   drawDebug(); window.__gaze={tx:target.x,ty:target.y,gx,gy,src:trackSrc,cur:curId,n:tracks.length,faceIdx};

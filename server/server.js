@@ -45,6 +45,10 @@ export function situation(c){ if(!c||typeof c!=='object') return ''; const p=[];
   return p.length?`\nSituation: ${p.join(', ')}.`:''; }
 export function parseReply(out){ let p; try{ p=JSON.parse(String(out).replace(/^```(json)?|```$/g,'').trim()); }catch{ p={text:out,expression:'happy'}; }
   return {text:String(p.text||'').slice(0,160),expression:EXPR.includes(p.expression)?p.expression:'happy'}; }
+const PERSONA={kongi:['Kongi','playful and mischievous little friend who loves peekaboo and silly jokes, always kind'],sunny:['Sunny','cheerful sunny friend'],
+ momo:['Momo','calm, cozy, gentle friend who speaks softly'],pip:['Pip','curious little explorer who asks friendly questions'],peach:['Peachy','shy, sweet and kind friend who blushes easily'],
+ pop:['Pop','super energetic happy friend who loves high fives'],lala:['Lala','graceful, warm and polite friend who loves flowers and music']};
+const personaLine=id=>PERSONA[id]?`\nToday you are "${PERSONA[id][0]}": a ${PERSONA[id][1]}. Stay cute, warm and positive.`:'';
 const sessions=new Map(), hits=new Map();
 function limited(ip){ const now=Date.now(), arr=(hits.get(ip)||[]).filter(t=>now-t<60000); arr.push(now); hits.set(ip,arr); return arr.length>20; } // 분당 20회/IP
 setInterval(()=>{ const now=Date.now(); for(const [k,v] of sessions) if(now-v.t>30*60000) sessions.delete(k); hits.clear(); },10*60000);
@@ -67,7 +71,7 @@ if(!process.env.NO_LISTEN) http.createServer(async(req,res)=>{ cors(req,res);
   if(!text&&!img) return send(res,400,{error:'empty'});
   const s=sessions.get(sid)||{h:[],t:0}; s.t=Date.now();
   const hist=Array.isArray(j.history)?j.history.slice(-12).filter(m=>m&&(m.role==='user'||m.role==='assistant')).map(m=>({role:m.role,content:String(m.content||'').slice(0,300)})):s.h.slice(-12);
-  const sys=SYSTEM+`\nReply language: ${LANGNAME[lang]}.`+(j.name?` User's name: ${String(j.name).slice(0,20)}.`:'')+situation(j.ctx);
+  const sys=SYSTEM+`\nReply language: ${LANGNAME[lang]}.`+(j.name?` User's name: ${String(j.name).slice(0,20)}.`:'')+situation(j.ctx)+personaLine(j.char);
   const utext=text||(j.scene==='greet'?'(A person just appeared in front of you. Greet them, optionally mentioning one thing you see.)':'(What do you see?)');
   try{ const ac=new AbortController(), to=setTimeout(()=>ac.abort(),8000); let out='';
     if(img){ // 이미지: Responses API, store:false (https://docs.x.ai/developers/model-capabilities/images/understanding)

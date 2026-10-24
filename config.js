@@ -29,3 +29,6 @@ export const LIVE={
   BUBBLE_GAP_MS:4000,         // 자동 말풍선 최소 간격(대화 응답 제외)
   BORED_MS:45000,             // 아무도 관심 없을 때 흥얼거림·하품 등 시작
 };
+
+// 요일별 캐릭터. 하나로 고정하려면 0(일)~6(토) 또는 이름(id: kongi,sunny,momo,pip,peach,pop,lala). 시험: ?char=3
+export const CHAR_PIN=null;
