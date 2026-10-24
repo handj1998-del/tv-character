@@ -43,12 +43,42 @@ function onFaces(list){ const now=Date.now(); if(!list.length)return;
     if(state==='sleeping'||state==='yawning'){ pendingMsg='앗, 깼어요! 안녕하세요!'; setState('waking'); }
     else if(list[0].w>.5){ pendingMsg=SP.LANGS[curLang].text; setState('startled'); queued='greet'; }
     else { pendingMsg=SP.LANGS[curLang].text; setState('surprised'); } }
-  lastSeen=now; faces=list;
-  if(list.length>1){ if(now>faceSwT){ faceIdx=(faceIdx+1)%list.length; faceSwT=now+2200+Math.random()*1500; } } else faceIdx=0;
-  const f=list[Math.min(faceIdx,list.length-1)];
-  target={x:Math.max(-1,Math.min(1,-(f.x*2-1)*1.6)),y:Math.max(-1,Math.min(1,(f.y*2-1)*1.8))};
+  lastSeen=now; trackFaces(list,now);
   if(list[0].w>.42&&now>shyCD&&(state==='happy'||state==='idle')){ shyCD=now+8000; emote('shy'); }
   if(state==='happy'&&now-faceSince>8000&&now>stareCD){ stareCD=now+20000; emote('wink','hearteyes'); } }
+// ── 시선 추적: 얼굴 여러 명 둘러보기 + 움직임 추적
+// 카메라 영상은 거울상이 아니므로 x를 뒤집음: 화면 앞 시청자 기준 왼쪽 사람 → 눈동자 화면 왼쪽
+const toGaze=(x,y)=>({x:Math.max(-1,Math.min(1,-(x*2-1)*1.5)),y:Math.max(-1,Math.min(1,(y*2-1)*1.6))});
+let tracks=[], nextId=1, curId=0, switchT=0, sacUntil=0, trackSrc='', motion=null, motionT=0;
+function trackFaces(list,now){ const nt=[];
+  for(const f of list){ let best=null,bd=.18; for(const t of tracks){ const d=Math.hypot(t.x-f.x,t.y-f.y); if(d<bd&&!nt.includes(t)){bd=d;best=t;} }
+    if(best){ best.moved=Math.max(best.moved*.9,Math.hypot(best.x-f.x,best.y-f.y)*10); Object.assign(best,f); nt.push(best); }
+    else nt.push({...f,id:nextId++,born:now,moved:1}); }
+  tracks=nt; faces=nt; let cur=tracks.find(t=>t.id===curId);
+  if(!cur||(tracks.length>1&&now>switchT)){
+    let pick=tracks[0];
+    if(tracks.length>1){ const others=tracks.filter(t=>t!==cur), nearest=tracks.reduce((a,b)=>b.w>a.w?b:a);
+      if(cur!==nearest&&Math.random()<.3) pick=nearest;
+      else { const w=others.map(t=>1+(now-t.born<3000?4:0)+Math.min(3,t.moved*3)); let r=Math.random()*w.reduce((a,b)=>a+b,0); pick=others.find((t,i)=>(r-=w[i])<0)||others[0]; } }
+    if(cur&&pick!==cur) sacUntil=now+120;
+    curId=pick.id; cur=pick; switchT=now+1500+Math.random()*2500; }
+  faceIdx=tracks.indexOf(cur); trackSrc='face'; target=toGaze(cur.x,cur.y); }
+const mc=document.createElement('canvas'); mc.width=64; mc.height=48; const mx=mc.getContext('2d',{willReadFrequently:true}); let prevF=null;
+function motionStep(){ if(video.readyState<2)return; mx.drawImage(video,0,0,64,48); const d=mx.getImageData(0,0,64,48).data, g=new Float32Array(64*48);
+  for(let i=0;i<g.length;i++) g[i]=d[i*4]*.3+d[i*4+1]*.59+d[i*4+2]*.11;
+  if(prevF){ let n=0,sx=0,sy=0; for(let i=0;i<g.length;i++) if(Math.abs(g[i]-prevF[i])>22){ n++; sx+=i%64; sy+=(i/64|0); }
+    if(n>12&&n<g.length*.6){ const now=Date.now(); const m={x:(sx/n+.5)/64,y:(sy/n+.5)/48,n};
+      motion=motion&&now-motionT<500?{x:motion.x*.5+m.x*.5,y:motion.y*.5+m.y*.5,n}:m; motionT=now;
+      if(!faceVisible){ trackSrc='motion'; target=toGaze(motion.x,motion.y); sleepAt=Math.max(sleepAt,now+8000); } } }
+  prevF=g; }
+const DBG=Q.get('debug')==='1'; let dbg=null;
+if(DBG){ dbg=document.createElement('canvas'); dbg.width=240; dbg.height=180; dbg.style.cssText='position:fixed;left:8px;top:8px;z-index:99;border:2px solid #000;background:#000;width:240px;height:180px'; document.body.appendChild(dbg); }
+function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=240,H=180; c.save(); c.translate(W,0); c.scale(-1,1); if(video.readyState>=2) c.drawImage(video,0,0,W,H); c.restore();
+  const X=x=>(1-x)*W; c.lineWidth=2; c.font='12px sans-serif';
+  for(const t of tracks){ const on=t.id===curId&&trackSrc==='face'&&faceVisible; c.strokeStyle=on?'#0f0':'#fff'; const w=t.w*W, h=w*(4/3)*(W/H)*.75; c.strokeRect(X(t.x)-w/2,t.y*H-h/2,w,h); c.fillStyle=c.strokeStyle; c.fillText((on?'▶ ':'')+'#'+t.id,X(t.x)-w/2,t.y*H-h/2-3); }
+  if(motion&&Date.now()-motionT<600){ c.fillStyle='#f0f'; c.beginPath(); c.arc(X(motion.x),motion.y*H,5,0,7); c.fill(); }
+  c.strokeStyle='#ff0'; c.beginPath(); c.arc(W/2+look.x/1.5*W/2,H/2+look.y/1.6*H/2,7,0,7); c.stroke();
+  c.fillStyle='#ff0'; c.fillText(`${trackSrc||'idle'} gaze ${look.x.toFixed(2)},${look.y.toFixed(2)}`,4,H-6); }
 function onWave(){ const now=Date.now(); if(now<waveMsgT)return; waveMsgT=now+5000; sleepAt=now+SLEEP_MS;
   if(state==='sleeping'||state==='yawning')return; $('#btext').textContent='👋 안녕~!'; $('#heard').textContent=''; body.classList.add('wave'); setTimeout(()=>body.classList.remove('wave'),2500); state=''; setState('excited'); }
 const E=(id)=>{const g=$(id),q=c=>g.querySelector(c);return{g,open:q('.open'),iris:q('.iris'),pupil:q('.pupil'),happy:q('.happy'),closed:q('.closed'),heart:q('.heart'),star:q('.star'),spiral:q('.spiral')};};
@@ -64,7 +94,7 @@ let lastT=performance.now();
 function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn-lastT)/1000); lastT=pn; const t=pn/1000, st=(now-stT)/1000;
   if(DEMO){ if(state!==DEMO){ if(DEMO==='greeting')$('#btext').textContent='안녕하세요!'; setState(DEMO);} }
   else {
-  if(faceVisible && now-lastSeen>LOST_MS){ faceVisible=false; faces=[]; sleepAt=now+SLEEP_MS; target={x:0,y:0}; }
+  if(faceVisible && now-lastSeen>LOST_MS){ faceVisible=false; faces=[]; tracks=[]; curId=0; sleepAt=now+SLEEP_MS; target={x:0,y:0}; }
   if(state==='surprised'&&st>0.7) showBubble(pendingMsg);
   else if(state==='waking'&&st>1.4) showBubble(pendingMsg);
   else if(state==='greeting'&&st>GREET_MS/1000) setState(faceVisible?'happy':'idle');
@@ -79,12 +109,13 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   }
   const S=state, asleep=S==='sleeping', joy=S==='happy'||S==='laugh'||S==='greeting'||S==='excited'||S==='hearteyes'||S==='stareyes';
   // ── 시선
-  if(S==='idle'&&Math.random()<dt*0.5) target={x:Math.random()*1.6-.8,y:Math.random()*1-.5};
-  if(!faceVisible&&S!=='idle'){ target.x*=1-dt*2; target.y*=1-dt*2; }
-  if(now>sacT){ sacT=now+250+Math.random()*900; sac={x:(Math.random()-.5)*.08,y:(Math.random()-.5)*.06}; }
-  const k=1-Math.pow(1-(faceVisible?0.18:0.06),dt*60); look.x+=(target.x-look.x)*k; look.y+=(target.y-look.y)*k;
+  const tracking=faceVisible||(Date.now()-motionT<1500&&trackSrc==='motion'); if(!tracking&&trackSrc==='motion'){ trackSrc=''; }
+  if(!tracking&&S==='idle'&&Math.random()<dt*0.5) target={x:Math.random()*1.6-.8,y:Math.random()*1-.5};
+  if(!tracking&&S!=='idle'){ target.x*=1-dt*2; target.y*=1-dt*2; }
+  if(now>sacT){ sacT=now+250+Math.random()*900; sac={x:(Math.random()-.5)*.05,y:(Math.random()-.5)*.04}; }
+  const k=1-Math.pow(1-(now<sacUntil?0.55:tracking?0.2:0.06),dt*60); look.x+=(target.x-look.x)*k; look.y+=(target.y-look.y)*k;
   let gx=asleep?0:look.x+sac.x, gy=asleep?.3:look.y+sac.y;
-  if(S==='shy'){ gx=gx*.3+.7; gy=.7; } if(S==='sad') gy=.6;
+  if(S==='shy'&&!tracking){ gx=gx*.3+.7; gy=.7; } else if(S==='shy') gy=Math.max(gy,.4); if(S==='sad') gy=.6;
   let ix=0, iy=0; if(S==='eyeroll'){ const a=Math.PI*(1+Math.min(st/1.2,1)); ix=Math.cos(a)*30; iy=-Math.abs(Math.sin(a))*40-(st<1.2?0:30); }
   if(S==='sleepy'||(S==='idle'&&NIGHT)) gy=Math.max(gy,.3);
   // ── 얼굴 그룹
@@ -98,7 +129,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(S==='sad') oy+=15; if(asleep) oy+=25; if(S==='yawning') oy+=ease(st/2.4)*18;
   let rot=gx*6+(joy?Math.sin(t*3)*2.5:0)+(asleep?-5+Math.sin(t*1.3)*1.5:0)+(S==='yawning'?-ease(st/1.5)*5:0);
   if(S==='curious') rot+=14*ease(st/.4); if(S==='dizzy') rot+=Math.sin(t*5)*8; if(S==='shy') rot-=6;
-  $('#root').setAttribute('transform',`translate(${400+gx*70+ox} ${250+gy*45+oy}) rotate(${rot}) scale(${sx} ${sy}) translate(-400 -250)`);
+  $('#root').setAttribute('transform',`translate(${400+gx*45+ox} ${250+gy*30+oy}) rotate(${rot}) scale(${sx} ${sy}) translate(-400 -250)`);
   // ── 깜빡임
   if(now>blinkT){ blinks=[now]; if(Math.random()<.25) blinks.push(now+260); blinkT=now+1800+Math.random()*4200; }
   let open=1; for(const b of blinks){ const d=(now-b)/1000; if(d>=0&&d<.16) open=Math.min(open,Math.abs(d-.08)/.08); }
@@ -114,13 +145,13 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   if(S==='wink') modes=['open','happy']; if(S==='hearteyes') mode='heart'; if(S==='stareyes') mode='star'; if(S==='dizzy') mode='spiral';
   if(S==='curious') scales=[1.12,.9];
   eyes.forEach(([e,cx],i)=>{ const md=modes?modes[i]:mode, sc=scales?scales[i]:eyeScale*(md==='heart'?1+Math.abs(Math.sin(t*6))*.08:1);
-    e.g.setAttribute('transform',`translate(${cx+gx*14} ${220+gy*10}) scale(${sc})`);
+    e.g.setAttribute('transform',`translate(${cx+gx*10} ${220+gy*8}) scale(${sc})`);
     e.open.setAttribute('transform',`scale(1 ${md==='open'?Math.max(.05,open):.05})`); e.open.style.opacity=md==='open'?1:0;
     e.happy.style.opacity=md==='happy'?1:0; e.closed.style.opacity=md==='closed'?1:0; e.heart.style.opacity=md==='heart'?1:0;
     e.star.style.opacity=md==='star'?1:0; e.spiral.style.opacity=md==='spiral'?1:0;
     if(md==='star') e.star.setAttribute('transform',`rotate(${Math.sin(t*4)*12}) scale(${1+Math.sin(t*8)*.06})`);
     if(md==='spiral') e.spiral.setAttribute('transform',`rotate(${t*400*(i?1:-1)})`);
-    e.iris.setAttribute('transform',`translate(${gx*16+ix} ${gy*16+iy})`); e.pupil.setAttribute('transform',`translate(0 10) scale(${pupilS}) translate(0 -10)`); });
+    e.iris.setAttribute('transform',`translate(${gx*34+ix} ${gy*28+iy})`); e.pupil.setAttribute('transform',`translate(0 10) scale(${pupilS}) translate(0 -10)`); });
   // ── 눈썹/땀/눈물
   const bL=$('#browL'), bR=$('#browR');
   if(S==='angry'){ bL.setAttribute('d','M185 70 L320 115'); bR.setAttribute('d','M615 70 L480 115'); }
@@ -145,6 +176,7 @@ function tick(){ const now=Date.now(), pn=performance.now(), dt=Math.min(.05,(pn
   $('#blush').setAttribute('opacity',S==='shy'?1:joy?.75:(asleep?.3:.45));
   $('#bang').style.opacity=S==='surprised'||S==='startled'?1:0;
   if(joy&&now>fxT){ fxT=now+(S==='greeting'||S==='excited'?350:900); spawnFx(S==='hearteyes'?'♥':S==='stareyes'?'✦':S==='laugh'?(curLang==='ko'?'ㅎ':curLang==='ja'?'笑':'ha'):''); }
+  drawDebug(); window.__gaze={tx:target.x,ty:target.y,gx,gy,src:trackSrc,cur:curId,n:tracks.length,faceIdx};
   requestAnimationFrame(tick); }
 setState(DEMO||'idle'); requestAnimationFrame(tick);
 $('#btnFs').onclick=()=>{ const d=document,el=d.documentElement; if(d.fullscreenElement||d.webkitFullscreenElement){(d.exitFullscreen||d.webkitExitFullscreen).call(d);return;} const f=el.requestFullscreen||el.webkitRequestFullscreen; if(f)f.call(el); else status.textContent='iPhone은 공유 → 홈 화면에 추가로 전체화면 사용'; };
@@ -152,6 +184,7 @@ $('#btnCam').onclick=()=>body.classList.toggle('showcam');
 document.addEventListener('keydown',e=>{ if(e.key==='f')$('#btnFs').click(); if(e.key==='c')$('#btnCam').click(); });
 window.startCam=async()=>{ try{
   video.srcObject=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}}});
+  setInterval(motionStep,66);
   status.textContent='얼굴 인식 모델 불러오는 중…';
   const fs=await FilesetResolver.forVisionTasks("./vendor/mediapipe/wasm");
   const det=await FaceDetector.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/blaze_face_short_range.tflite",delegate:"GPU"},runningMode:"VIDEO",minDetectionConfidence:0.5});
@@ -188,3 +221,6 @@ $('#tap').onclick=async()=>{ $('#tap').remove();
 if(DEMO||Q.get('say')) $('#tap').remove();
 // 데모: ?say=문장&lang=ko|en|zh|yue|ja → 대화 엔진 테스트
 if(Q.get('say')) setTimeout(()=>greetLang({lang:Q.get('lang')||'ko',text:Q.get('say'),dbg:'demo'}),300);
+// ?autocam=1 → 탭 없이 카메라 시작(키오스크/테스트), ?debug=1 → 미리보기+시선 표시
+if(Q.get('autocam')==='1'){ $('#tap')?.remove(); window.startCam().then(()=>video.play().catch(()=>{})); }
+if(DBG) window.__onFaces=onFaces;
