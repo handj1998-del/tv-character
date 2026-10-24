@@ -4,20 +4,57 @@
 <title>TV 캐릭터 친구</title><link rel="stylesheet" href="style.css"></head>
 <body>
 <div id="stage">
-  <svg id="face" viewBox="0 0 800 600">
-    <ellipse id="cheekL" cx="200" cy="380" rx="50" ry="28" fill="#ff8fab" opacity="0"/>
-    <ellipse id="cheekR" cx="600" cy="380" rx="50" ry="28" fill="#ff8fab" opacity="0"/>
-    <g id="eyes">
-      <g id="eyeL" transform="translate(270,270)"><ellipse class="eye" rx="70" ry="90"/><circle class="pupil" r="26" cx="0" cy="0"/><circle class="shine" r="10" cx="-18" cy="-24"/></g>
-      <g id="eyeR" transform="translate(530,270)"><ellipse class="eye" rx="70" ry="90"/><circle class="pupil" r="26" cx="0" cy="0"/><circle class="shine" r="10" cx="-18" cy="-24"/></g>
-      <path id="happyL" class="arc" d="M200 290 Q270 200 340 290"/>
-      <path id="happyR" class="arc" d="M460 290 Q530 200 600 290"/>
-      <path id="sleepL" class="arc" d="M200 270 Q270 320 340 270"/>
-      <path id="sleepR" class="arc" d="M460 270 Q530 320 600 270"/>
+  <svg id="face" viewBox="0 0 800 800" aria-label="캐릭터">
+  <defs>
+    <linearGradient id="hairG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8f7cff"/><stop offset=".6" stop-color="#6a55e0"/><stop offset="1" stop-color="#4a3ab8"/></linearGradient>
+    <radialGradient id="irisG" cx=".5" cy=".62" r=".6"><stop offset="0" stop-color="#ffd2f0"/><stop offset=".35" stop-color="#c46bff"/><stop offset=".75" stop-color="#6a2fd6"/><stop offset="1" stop-color="#2a1260"/></radialGradient>
+    <radialGradient id="skinG" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#fff3ea"/><stop offset="1" stop-color="#ffdcca"/></radialGradient>
+    <clipPath id="clipEye" clipPathUnits="userSpaceOnUse"><ellipse rx="50" ry="62"/></clipPath>
+  </defs>
+  <g id="root">
+    <g id="body">
+      <path d="M235 690 Q400 600 565 690 L600 820 L200 820 Z" fill="#fdfcff" stroke="#d9d4f5" stroke-width="6"/>
+      <path d="M340 640 Q400 690 460 640" fill="none" stroke="#b9a3ff" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="372" cy="700" r="8" fill="#ff8fb8"/><circle cx="428" cy="700" r="8" fill="#ff8fb8"/>
+      <g id="armL"><path d="M250 690 Q215 740 220 790" fill="none" stroke="#fdfcff" stroke-width="44" stroke-linecap="round"/><circle cx="220" cy="792" r="24" fill="#ffe3d3"/></g>
+      <g id="armR"><path d="M550 690 Q585 740 580 790" fill="none" stroke="#fdfcff" stroke-width="44" stroke-linecap="round"/><circle cx="580" cy="792" r="24" fill="#ffe3d3"/></g>
     </g>
-    <path id="mouth" class="arc" d="M360 430 Q400 450 440 430"/>
-    <text id="wave" x="660" y="520" font-size="120">👋</text>
-  </svg>
+    <g id="head">
+      <path d="M170 430 C130 200 670 200 630 430 L650 640 C610 680 570 650 565 610 L235 610 C230 650 190 680 150 640 Z" fill="url(#hairG)"/>
+      <g id="lockL"><path d="M215 360 C170 450 185 560 205 640 C225 600 245 520 250 420 Z" fill="url(#hairG)"/></g>
+      <g id="lockR"><path d="M585 360 C630 450 615 560 595 640 C575 600 555 520 550 420 Z" fill="url(#hairG)"/></g>
+      <ellipse cx="400" cy="420" rx="200" ry="185" fill="url(#skinG)"/>
+      <g id="blush" opacity=".55"><ellipse cx="300" cy="512" rx="38" ry="16" fill="#ff8fb0"/><ellipse cx="500" cy="512" rx="38" ry="16" fill="#ff8fb0"/>
+        <path d="M285 505 l-8 14 M300 505 l-8 14 M315 505 l-8 14 M485 505 l-8 14 M500 505 l-8 14 M515 505 l-8 14" stroke="#ff6f9a" stroke-width="3" stroke-linecap="round"/></g>
+      <g id="eyeL" transform="translate(318,440)">
+        <g class="open"><g clip-path="url(#clipEye)"><ellipse rx="50" ry="62" fill="#fff"/>
+          <g class="iris"><ellipse rx="40" ry="50" fill="url(#irisG)"/><ellipse class="pupil" rx="15" ry="21" fill="#1c0b3d"/>
+            <ellipse cx="-14" cy="-20" rx="14" ry="17" fill="#fff"/><circle cx="16" cy="16" r="7" fill="#fff"/><circle cx="-18" cy="22" r="3.5" fill="#fff" opacity=".9"/></g>
+          <ellipse rx="50" ry="62" fill="none" stroke="#3b2560" stroke-width="3"/></g>
+          <path d="M-58 -30 Q-20 -80 52 -50 L56 -42 Q-10 -70 -50 -22 Z" fill="#2a1a3a"/><path d="M-50 -28 L-70 -38 L-56 -18 Z" fill="#2a1a3a"/></g>
+        <path class="happy" d="M-42 8 Q0 -38 42 8" fill="none" stroke="#2a1a3a" stroke-width="11" stroke-linecap="round" opacity="0"/>
+        <path class="closed" d="M-44 -4 Q0 28 44 -4" fill="none" stroke="#2a1a3a" stroke-width="10" stroke-linecap="round" opacity="0"/>
+      </g>
+      <g id="eyeR" transform="translate(482,440)">
+        <g class="open"><g clip-path="url(#clipEye)"><ellipse rx="50" ry="62" fill="#fff"/>
+          <g class="iris"><ellipse rx="40" ry="50" fill="url(#irisG)"/><ellipse class="pupil" rx="15" ry="21" fill="#1c0b3d"/>
+            <ellipse cx="-14" cy="-20" rx="14" ry="17" fill="#fff"/><circle cx="16" cy="16" r="7" fill="#fff"/><circle cx="-18" cy="22" r="3.5" fill="#fff" opacity=".9"/></g>
+          <ellipse rx="50" ry="62" fill="none" stroke="#3b2560" stroke-width="3"/></g>
+          <g transform="scale(-1,1)"><path d="M-58 -30 Q-20 -80 52 -50 L56 -42 Q-10 -70 -50 -22 Z" fill="#2a1a3a"/><path d="M-50 -28 L-70 -38 L-56 -18 Z" fill="#2a1a3a"/></g></g>
+        <path class="happy" d="M-42 8 Q0 -38 42 8" fill="none" stroke="#2a1a3a" stroke-width="11" stroke-linecap="round" opacity="0"/>
+        <path class="closed" d="M-44 -4 Q0 28 44 -4" fill="none" stroke="#2a1a3a" stroke-width="10" stroke-linecap="round" opacity="0"/>
+      </g>
+      <path id="mouth" d="M382 528 Q400 540 418 528" fill="none" stroke="#7a2a45" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle id="snot" cx="432" cy="510" r="0" fill="#bfe6ff" opacity=".75" stroke="#fff" stroke-width="3"/>
+      <path d="M195 420 C175 240 300 190 400 192 C500 190 625 240 605 420 L588 360 L565 300 L535 352 L492 268 L458 340 L412 258 L372 340 L332 272 L300 352 L262 300 L232 372 Z" fill="url(#hairG)"/>
+      <path d="M270 250 Q330 215 400 212" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity=".35"/>
+      <g id="ahoge"><path d="M402 196 C380 130 440 110 425 55 C470 105 445 160 418 198 Z" fill="url(#hairG)"/></g>
+      <g transform="translate(565,282) rotate(15)"><path d="M0 -26 L7 -8 L26 -8 L11 4 L17 23 L0 12 L-17 23 L-11 4 L-26 -8 L-7 -8 Z" fill="#ffd966" stroke="#f2a93b" stroke-width="3"/></g>
+      <text id="bang" x="610" y="250" font-size="110" font-weight="900" fill="#ff5c8a" opacity="0">!</text>
+    </g>
+  </g>
+</svg>
+<div id="fx"></div>
   <div id="bubble">안녕하세요!</div>
   <div id="zzz"><span>Z</span><span>z</span><span>z</span></div>
 </div>

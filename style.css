@@ -1,18 +1,12 @@
-html,body{margin:0;height:100%;background:#101828;overflow:hidden;font-family:sans-serif;cursor:none}
+html,body{margin:0;height:100%;background:#1b1640;overflow:hidden;font-family:sans-serif;cursor:none}
 body:hover{cursor:default}
-#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;transition:background 1s}
-body.sleeping #stage{background:#060a14}
-#face{width:min(95vw,127vh);height:auto;will-change:transform;transform-origin:50% 55%}
-.eye{fill:#fff}.pupil{fill:#1d2939}.shine{fill:#fff}
-.arc{fill:none;stroke:#fff;stroke-width:18;stroke-linecap:round}
-#happyL,#happyR,#sleepL,#sleepR,#wave{opacity:0;transition:opacity .3s}
-#eyes g{transition:opacity .3s}
-#cheekL,#cheekR{transition:opacity .5s}
-body.happy #cheekL,body.happy #cheekR,body.greeting #cheekL,body.greeting #cheekR{opacity:.7}
-body.greeting #eyeL,body.greeting #eyeR,body.sleeping #eyeL,body.sleeping #eyeR{opacity:0}
-body.greeting #happyL,body.greeting #happyR,body.sleeping #sleepL,body.sleeping #sleepR{opacity:1}
-body.greeting #wave{opacity:1;animation:wave .5s ease-in-out infinite alternate;transform-origin:720px 500px}
-@keyframes wave{from{transform:rotate(-20deg)}to{transform:rotate(20deg)}}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 45%,#3b2f7a 0%,#1b1640 70%);transition:filter 1.5s}
+body.sleeping #stage,body.yawning #stage{filter:brightness(.55) saturate(.8)}
+#face{width:min(96vw,92vh);height:auto;overflow:visible}
+
+#fx{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+#fx span{position:absolute;font-weight:900;animation:fx 1.6s ease-out forwards;will-change:transform,opacity}
+@keyframes fx{0%{transform:translate(0,0) scale(.2) rotate(0);opacity:0}20%{opacity:1;transform:translate(var(--dx),-4vmin) scale(1.1) rotate(10deg)}100%{transform:translate(calc(var(--dx)*2),-22vmin) scale(.8) rotate(-15deg);opacity:0}}
 #bubble{position:fixed;top:6vh;left:50%;transform:translateX(-50%) scale(0);background:#fff;color:#101828;font-size:clamp(32px,10vmin,140px);font-weight:900;line-height:1.2;padding:2.5vmin 6vmin;border-radius:6vmin;max-width:90vw;text-align:center;box-shadow:0 1vmin 4vmin rgba(0,0,0,.4);transition:transform .3s cubic-bezier(.3,1.6,.5,1)}
 body.greeting #bubble{transform:translateX(-50%) scale(1)}
 #zzz{position:fixed;top:15vh;right:18vw;color:#9fb3ff;font-size:8vh;font-weight:bold;opacity:0}
@@ -37,7 +31,6 @@ html,body{height:100dvh;touch-action:manipulation;-webkit-user-select:none;user-
   #video{width:30vw;bottom:auto;top:calc(env(safe-area-inset-top) + 10px)}
 }
 @media (orientation:portrait){
-  #face{width:100vw}
   #bubble{font-size:13vw;top:calc(env(safe-area-inset-top) + 8vh)}
   #zzz{top:22vh;right:10vw;font-size:10vw}
 }
