@@ -1,6 +1,7 @@
-import { FaceDetector, GestureRecognizer, FilesetResolver } from "./vendor/mediapipe/vision_bundle.mjs";
+import { FaceDetector, GestureRecognizer, PoseLandmarker, FilesetResolver } from "./vendor/mediapipe/vision_bundle.mjs";
 import * as SP from "./speech.js";
 import * as DLG from "./dialogue.js";
+import * as GS from "./gestures.js";
 import { GROK_ENDPOINT, GROK_TIMEOUT_MS } from "./config.js";
 const $=s=>document.querySelector(s), body=document.body, video=$('#video'), status=$('#status');
 const Q=new URLSearchParams(location.search), DEMO=Q.get('state');
@@ -78,7 +79,14 @@ function drawDebug(){ if(!dbg)return; const c=dbg.getContext('2d'),W=240,H=180; 
   for(const t of tracks){ const on=t.id===curId&&trackSrc==='face'&&faceVisible; c.strokeStyle=on?'#0f0':'#fff'; const w=t.w*W, h=w*(4/3)*(W/H)*.75; c.strokeRect(X(t.x)-w/2,t.y*H-h/2,w,h); c.fillStyle=c.strokeStyle; c.fillText((on?'▶ ':'')+'#'+t.id,X(t.x)-w/2,t.y*H-h/2-3); }
   if(motion&&Date.now()-motionT<600){ c.fillStyle='#f0f'; c.beginPath(); c.arc(X(motion.x),motion.y*H,5,0,7); c.fill(); }
   c.strokeStyle='#ff0'; c.beginPath(); c.arc(W/2+look.x/1.5*W/2,H/2+look.y/1.6*H/2,7,0,7); c.stroke();
-  c.fillStyle='#ff0'; c.fillText(`${trackSrc||'idle'} gaze ${look.x.toFixed(2)},${look.y.toFixed(2)}`,4,H-6); }
+  c.fillStyle='#ff0'; c.fillStyle='#0ff'; c.fillText(`손/몸: ${gestLive||'-'}  최근: ${gestLast||'-'}`,4,14); c.fillStyle='#ff0'; c.fillText(`${trackSrc||'idle'} gaze ${look.x.toFixed(2)},${look.y.toFixed(2)}`,4,H-6); }
+let gestLive='', gestLast='';
+function onGesture(g){ const now=Date.now(); gestLast=g+' '+new Date().toLocaleTimeString(); sleepAt=now+SLEEP_MS;
+  if(state==='sleeping'||state==='yawning'){ setState('waking'); pendingMsg=GS.REACT.wave[1][curLang]; return; }
+  const [ex,tx]=GS.REACT[g]; say(tx[curLang]||tx.ko, ex==='surprised'?'startled':ex);
+  if(g==='bigheart'||g==='fingerheart'){ const n=g==='bigheart'?14:6; for(let i=0;i<n;i++) setTimeout(()=>spawnFx('♥'),i*120); }
+  if(g==='v') spawnFx('✌'); if(g==='armsup'||g==='clap') for(let i=0;i<6;i++) setTimeout(()=>spawnFx(),i*100);
+  if(g==='stop') blinks=[now,now+260]; if(g==='thumbsup') queued='happy'; }
 function onWave(){ const now=Date.now(); if(now<waveMsgT)return; waveMsgT=now+5000; sleepAt=now+SLEEP_MS;
   if(state==='sleeping'||state==='yawning')return; $('#btext').textContent='👋 안녕~!'; $('#heard').textContent=''; body.classList.add('wave'); setTimeout(()=>body.classList.remove('wave'),2500); state=''; setState('excited'); }
 const E=(id)=>{const g=$(id),q=c=>g.querySelector(c);return{g,open:q('.open'),iris:q('.iris'),pupil:q('.pupil'),happy:q('.happy'),closed:q('.closed'),heart:q('.heart'),star:q('.star'),spiral:q('.spiral')};};
@@ -192,16 +200,16 @@ window.startCam=async()=>{ try{
   setInterval(()=>{ if(video.readyState<2||video.currentTime===last)return; last=video.currentTime;
     const r=det.detectForVideo(video,performance.now()); const W=video.videoWidth,H=video.videoHeight;
     if(r.detections.length) onFaces(r.detections.map(d=>d.boundingBox).sort((a,b)=>b.width-a.width).slice(0,4).map(b=>({x:(b.originX+b.width/2)/W,y:(b.originY+b.height/2)/H,w:b.width/W}))); },33);
-  // 손 흔들기 인식 (가볍게: 150ms 간격)
-  try{ const gr=await GestureRecognizer.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/gesture_recognizer.task",delegate:"GPU"},runningMode:"VIDEO",numHands:1});
-    const hist=[]; let palmSince=0;
-    setInterval(()=>{ if(video.readyState<2||state==='sleeping')return; const now=performance.now(); const r=gr.recognizeForVideo(video,now);
-      const g=r.gestures?.[0]?.[0], lm=r.landmarks?.[0];
-      if(g&&g.categoryName==='Open_Palm'&&g.score>.6&&lm){ if(!palmSince)palmSince=now; hist.push([now,lm[0].x]); }
-      else { palmSince=0; hist.length=0; }
-      while(hist.length&&now-hist[0][0]>1300) hist.shift();
-      const xs=hist.map(h=>h[1]); const range=xs.length?Math.max(...xs)-Math.min(...xs):0;
-      if((xs.length>=4&&range>.07)||(palmSince&&now-palmSince>1200)){ hist.length=0; palmSince=0; onWave(); } },150);
+  // 동작 인식 (손 2개 + 몸 포즈). 휴대폰은 느리게, 포즈는 ?pose=1일 때만
+  try{ const MOB=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent), usePose=Q.get('pose')==='1'||(!MOB&&Q.get('pose')!=='0');
+    const gr=await GestureRecognizer.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/gesture_recognizer.task",delegate:"GPU"},runningMode:"VIDEO",numHands:2});
+    let pl=null; if(usePose) try{ pl=await PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:"./vendor/models/pose_landmarker_lite.task",delegate:"GPU"},runningMode:"VIDEO",numPoses:1}); }catch(e){ console.warn('pose off',e); }
+    const det=GS.createDetector(); let pose=null, pi=0;
+    setInterval(()=>{ if(video.readyState<2||state==='sleeping')return; const pn=performance.now();
+      const r=gr.recognizeForVideo(video,pn);
+      if(pl&&(pi++%2===0)){ pose=pl.detectForVideo(video,pn+1).landmarks?.[0]||null; }
+      const g=det.step(Date.now(),{hands:r.landmarks||[],builtins:(r.gestures||[]).map(x=>x?.[0]?.categoryName||''),pose});
+      gestLive=det.live; if(g) onGesture(g); },MOB?250:120);
   }catch(e){ console.warn('gesture off',e); }
  }catch(e){ console.error(e); status.textContent='카메라/모델 오류: '+e.message+' (localhost 또는 https 필요)'; } };
 
@@ -218,9 +226,11 @@ document.addEventListener('keydown',e=>{ if(e.key==='m'||e.key==='M')toggleMic()
 $('#tap').onclick=async()=>{ $('#tap').remove();
   try{ await video.play(); }catch{}
   await window.startCam(); video.play().catch(()=>{}); };
-if(DEMO||Q.get('say')) $('#tap').remove();
+if(DEMO||Q.get('say')||Q.get('gesture')) $('#tap').remove();
 // 데모: ?say=문장&lang=ko|en|zh|yue|ja → 대화 엔진 테스트
 if(Q.get('say')) setTimeout(()=>greetLang({lang:Q.get('lang')||'ko',text:Q.get('say'),dbg:'demo'}),300);
 // ?autocam=1 → 탭 없이 카메라 시작(키오스크/테스트), ?debug=1 → 미리보기+시선 표시
 if(Q.get('autocam')==='1'){ $('#tap')?.remove(); window.startCam().then(()=>video.play().catch(()=>{})); }
 if(DBG) window.__onFaces=onFaces;
+
+if(Q.get('gesture')) setTimeout(()=>{ $('#tap')?.remove(); onGesture(Q.get('gesture')); },400);
