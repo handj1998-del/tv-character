@@ -13,3 +13,10 @@
 - Grok 연결(선택): server/README.md 참고
 - 눈동자가 사람(얼굴, 없으면 움직임)을 따라갑니다. 여러 명이면 번갈아 봅니다. 점검: 주소 뒤에 ?debug=1
 - 동작 인식: 손 흔들기, 손가락 하트, 머리 위 큰 하트, 엄지척, 브이, 박수, 손가락으로 가리키기, OK, 손바닥 멈춤, 만세, 얼굴 가리고 까꿍. 시험: ?gesture=bigheart
+
+[클라우드 음성 인식 (선택, 기본 꺼짐)]
+- 기본은 기기 안의 Whisper로 받아 적어요. 더 정확한 xAI 음성 인식(grok-voice-transcribe-2.0, 약 $0.10/시간)을 쓰려면:
+  1) server/ 프록시를 배포 (환경변수 XAI_API_KEY — Grok 대화와 같은 키). 주소 예: https://tv-character-api.onrender.com/stt
+  2) config.js 의 STT_ENDPOINT 에 그 주소 입력 (시험: 주소 뒤에 ?stt=https://.../stt)
+- 켜져 있으면 Whisper 모델을 미리 받지 않고, 클라우드가 6초 안에 답하지 않거나 오류가 나면 그때 Whisper를 받아 대신 사용해요.
+- 다른 OpenAI 호환 서비스: 서버 환경변수 STT_URL, STT_MODEL, STT_KEY 로 변경.

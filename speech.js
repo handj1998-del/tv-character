@@ -9,9 +9,24 @@ export const LANGS={
   yue:{label:'粵語(繁體)',text:'你好呀！'},
   ja:{label:'日本語',text:'こんにちは！'},
 };
+import { STT_ENDPOINT, STT_TIMEOUT_MS } from "./config.js";
+const STT=new URLSearchParams(location.search).get('stt')||STT_ENDPOINT;
+export const CLOUD=!!STT;
+function wav(a){ const b=new ArrayBuffer(44+a.length*2), v=new DataView(b), w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+  w(0,'RIFF');v.setUint32(4,36+a.length*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,16000,true);v.setUint32(28,32000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,a.length*2,true);
+  for(let i=0;i<a.length;i++) v.setInt16(44+i*2,Math.max(-1,Math.min(1,a[i]))*32767,true); return new Blob([b],{type:'audio/wav'}); }
+async function cloud(a){ const ac=new AbortController(), to=setTimeout(()=>ac.abort(),STT_TIMEOUT_MS);
+  try{ const r=await fetch(STT,{method:'POST',headers:{'Content-Type':'audio/wav'},body:wav(a),signal:ac.signal});
+    if(!r.ok) throw new Error('STT '+r.status); const j=await r.json();
+    if(!LANGS[j.lang]) throw new Error('STT lang'); return {lang:j.lang,text:String(j.text||''),dbg:'☁️ '+(j.raw||j.lang)}; }
+  finally{ clearTimeout(to); } }
+let loaded=null, statusFn=()=>{};
+async function ensureLocal(){ return loaded||(loaded=realLoad(statusFn).catch(e=>{loaded=null;throw e;})); }
 const CANTO=/[係嘅唔咁佢冇啲喺咩嘢哋囉噉喇咗]/;
 let T,model,proc,tok,ctx,stream,node,src,on=false,busy=false;
-export async function load(status){
+export async function load(status){ statusFn=status; if(CLOUD){ status('☁️ 클라우드 음성 인식 사용'); return; } return ensureLocal(); }
+async function realLoad(status){
   T=await import(TJS);
   T.env.backends.onnx.wasm.wasmPaths=new URL('./vendor/transformers/',import.meta.url).href;
   const gpu=!!navigator.gpu&&!!(await navigator.gpu.requestAdapter().catch(()=>null));
@@ -26,6 +41,8 @@ export async function load(status){
 const CAND=['ko','en','zh','ja'];
 function scriptLang(t){ if(/[\uAC00-\uD7A3]/.test(t))return 'ko'; if(/[\u3040-\u30FF]/.test(t))return 'ja'; if(/[\u4E00-\u9FFF]/.test(t))return 'zh'; if(/[A-Za-z]{2}/.test(t))return 'en'; return null; }
 async function detect(audio){
+  if(CLOUD){ try{ const r=await cloud(audio); if(r.text.trim()) return r; }catch(e){ console.warn('cloud STT 실패 → 기기 Whisper',e); } }
+  await ensureLocal();
   const {input_features}=await proc(audio);
   // 1) 언어 식별: <|startoftranscript|> 다음 토큰의 로짓을 후보 언어 토큰끼리만 비교
   //   (transformers.js는 language 미지정 시 영어로 강제하므로 generate에 맡기면 안 됨)

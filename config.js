@@ -3,3 +3,8 @@
 // 테스트용으로 URL에 ?grok=https://.../api/chat 을 붙여도 됩니다.
 export const GROK_ENDPOINT='';
 export const GROK_TIMEOUT_MS=6000;
+
+// 클라우드 음성 인식(STT) 설정. 비워 두면 기기 내 Whisper만 사용합니다.
+// 예: export const STT_ENDPOINT='https://tv-character-api.onrender.com/stt';  (테스트: URL에 ?stt=https://.../stt)
+export const STT_ENDPOINT='';
+export const STT_TIMEOUT_MS=6000;

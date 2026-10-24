@@ -11,3 +11,7 @@
 
 실패하거나 6초 안에 응답이 없으면 자동으로 규칙 기반 대화로 돌아갑니다. 프록시는 IP당 분당 20회로 제한되고, 세션별 최근 대화 8개만 기억합니다(30분 후 삭제).
 로컬 실행: `cd server && XAI_API_KEY=... node server.js` (포트 8787)
+
+## POST /stt (클라우드 음성 인식, 선택)
+본문: audio/wav (16kHz mono). 응답: `{text, lang, raw}` (lang: ko|en|zh|yue|ja).
+기본 업스트림: xAI `POST https://api.x.ai/v1/stt` (multipart, model `grok-voice-transcribe-2.0`, $0.10/hr). 환경변수 STT_URL / STT_MODEL / STT_KEY 로 교체 가능.
